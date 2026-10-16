@@ -1,0 +1,262 @@
+// The real backend: Supabase (Postgres + Auth).
+// Table/column names are snake_case in the database and camelCase in the app;
+// the small `to...` functions below translate between them.
+// Security lives in the database (see supabase/schema.sql), not here.
+
+import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
+import type { DriverOffer, EventInput, PickupSpot, PublicOffer, RideEvent, Session } from '../types';
+import type { RidesApi } from './types';
+
+const url = import.meta.env.VITE_SUPABASE_URL as string;
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const adminDomain = (import.meta.env.VITE_ADMIN_EMAIL_DOMAIN as string | undefined) || 'lbcrides.app';
+
+// PKCE puts the sign-in code in ?code= instead of the #hash, so it doesn't
+// clash with the site's #/page routing.
+// Only created when keys exist, so demo mode never touches Supabase.
+const supabase = (url && anonKey
+  ? createClient(url, anonKey, { auth: { flowType: 'pkce' } })
+  : null) as unknown as SupabaseClient;
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type Row = Record<string, any>;
+
+const toEvent = (r: Row): RideEvent => ({
+  id: r.id,
+  category: r.category,
+  title: r.title,
+  description: r.description ?? '',
+  startsAt: r.starts_at,
+  endsAt: r.ends_at,
+  destination: r.destination ?? '',
+});
+
+const fromEvent = (e: EventInput) => ({
+  category: e.category,
+  title: e.title,
+  description: e.description,
+  starts_at: e.startsAt,
+  ends_at: e.endsAt,
+  destination: e.destination,
+});
+
+const toSpot = (r: Row): PickupSpot => ({ id: r.id, name: r.name, sortOrder: r.sort_order });
+
+function toSession(user: User | null | undefined): Session {
+  if (!user) return null;
+  const role = user.app_metadata?.role === 'admin' ? 'admin' : 'driver';
+  return { role, userId: user.id, email: user.email ?? '' };
+}
+
+/** Throws a readable error if Supabase returned one. */
+function check<T>(res: { data: T; error: { message: string } | null }): T {
+  if (res.error) throw new Error(res.error.message);
+  return res.data;
+}
+
+async function currentUserId(): Promise<string> {
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) throw new Error('Please sign in first.');
+  return data.user.id;
+}
+
+export const supabaseApi: RidesApi = {
+  mode: 'supabase',
+
+  async listPickupSpots() {
+    const rows = check(await supabase.from('pickup_locations').select('*').eq('active', true).order('sort_order'));
+    return (rows ?? []).map(toSpot);
+  },
+
+  async listUpcomingEvents(category) {
+    let q = supabase.from('events').select('*').gt('ends_at', new Date().toISOString()).order('starts_at');
+    if (category) q = q.eq('category', category);
+    return (check(await q) ?? []).map(toEvent);
+  },
+
+  async getEvent(id) {
+    const row = check(await supabase.from('events').select('*').eq('id', id).maybeSingle());
+    return row ? toEvent(row) : null;
+  },
+
+  async listOffers(eventId) {
+    const rows = check(await supabase.rpc('event_offers', { p_event_id: eventId })) as Row[] | null;
+    return (rows ?? []).map(
+      (r): PublicOffer => ({
+        id: r.id,
+        eventId: r.event_id,
+        driverName: r.driver_name,
+        carDescription: r.car_description ?? '',
+        seats: r.seats,
+        seatsTaken: r.seats_taken,
+        departTime: r.depart_time,
+        pickupIds: r.pickup_ids ?? [],
+      }),
+    );
+  },
+
+  async requestRide(input) {
+    const res = check(
+      await supabase.rpc('request_ride', {
+        p_event_id: input.eventId,
+        p_rider_name: input.riderName,
+        p_phone: input.phone,
+        p_messenger: input.messenger,
+        p_pickup_id: input.pickupId,
+        p_notes: input.notes,
+        p_offer_id: input.offerId,
+      }),
+    ) as Row;
+    return { token: res.token, assignedOfferId: res.assigned_offer_id };
+  },
+
+  async getMyRides(tokens) {
+    if (tokens.length === 0) return [];
+    const rows = (check(await supabase.rpc('my_rides', { p_tokens: tokens })) ?? []) as Row[];
+    return rows.map((r) => ({
+      token: r.token,
+      event: toEvent(r.event),
+      riderName: r.rider_name,
+      pickupName: r.pickup_name ?? '',
+      driver: r.driver
+        ? { name: r.driver.name, phone: r.driver.phone, carDescription: r.driver.car_description, departTime: r.driver.depart_time }
+        : null,
+      gcJoinLink: r.gc_join_link ?? null,
+    }));
+  },
+
+  async cancelRide(token) {
+    check(await supabase.rpc('cancel_ride', { p_token: token }));
+  },
+
+  async getSession() {
+    const { data } = await supabase.auth.getSession();
+    return toSession(data.session?.user);
+  },
+
+  onSessionChange(cb) {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => cb(toSession(session?.user)));
+    return () => data.subscription.unsubscribe();
+  },
+
+  async signInDriver(email) {
+    const redirect = `${window.location.origin}${window.location.pathname}`;
+    check(await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirect } }));
+    return { linkSent: true };
+  },
+
+  async signInAdmin(username, password) {
+    const email = username.includes('@') ? username.trim() : `${username.trim().toLowerCase()}@${adminDomain}`;
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw new Error('Wrong username or password.');
+    if (data.user?.app_metadata?.role !== 'admin') {
+      await supabase.auth.signOut();
+      throw new Error('That account is not an admin.');
+    }
+  },
+
+  async signOut() {
+    await supabase.auth.signOut();
+  },
+
+  async getDriverProfile() {
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) return null;
+    const row = check(await supabase.from('drivers').select('*').eq('id', auth.user.id).maybeSingle());
+    return row ? { id: row.id, name: row.name, phone: row.phone, carDescription: row.car_description, seats: row.seats } : null;
+  },
+
+  async saveDriverProfile(p) {
+    const id = await currentUserId();
+    check(
+      await supabase.from('drivers').upsert({ id, name: p.name, phone: p.phone, car_description: p.carDescription, seats: p.seats }),
+    );
+  },
+
+  async listMyOffers() {
+    const id = await currentUserId();
+    const rows = (check(
+      await supabase
+        .from('ride_offers')
+        .select(
+          // The !constraint_name hints tell Supabase which link between tables to follow.
+          'id, seats, depart_time, gc_join_link, event:events!ride_offers_event_id_fkey(*), riders:ride_requests!ride_requests_assigned_offer_id_fkey(id, rider_name, phone, messenger, notes, pickup_id, pickup:pickup_locations(name))',
+        )
+        .eq('driver_id', id),
+    ) ?? []) as Row[];
+    const now = new Date();
+    return rows
+      .map(
+        (r): DriverOffer => ({
+          id: r.id,
+          event: toEvent(r.event),
+          seats: r.seats,
+          departTime: r.depart_time,
+          gcJoinLink: r.gc_join_link,
+          riders: (r.riders ?? []).map((x: Row) => ({
+            requestId: x.id,
+            riderName: x.rider_name,
+            phone: x.phone,
+            messenger: x.messenger ?? '',
+            notes: x.notes ?? '',
+            pickupId: x.pickup_id,
+            pickupName: x.pickup?.name ?? '',
+          })),
+        }),
+      )
+      .filter((o) => new Date(o.event.endsAt) > now)
+      .sort((a, b) => a.event.startsAt.localeCompare(b.event.startsAt));
+  },
+
+  async createOffer(o) {
+    const id = await currentUserId();
+    const res = await supabase.from('ride_offers').insert({
+      driver_id: id,
+      event_id: o.eventId,
+      seats: o.seats,
+      depart_time: o.departTime,
+      gc_join_link: o.gcJoinLink,
+    });
+    if (res.error?.code === '23505') throw new Error('You are already driving for this ride.');
+    check(res);
+  },
+
+  async updateOfferLink(offerId, link) {
+    check(await supabase.from('ride_offers').update({ gc_join_link: link }).eq('id', offerId));
+  },
+
+  async deleteOffer(offerId) {
+    check(await supabase.from('ride_offers').delete().eq('id', offerId));
+  },
+
+  async listAllEvents() {
+    return (check(await supabase.from('events').select('*').order('starts_at')) ?? []).map(toEvent);
+  },
+
+  async createEvent(e) {
+    check(await supabase.from('events').insert(fromEvent(e)));
+  },
+
+  async updateEvent(id, e) {
+    check(await supabase.from('events').update(fromEvent(e)).eq('id', id));
+  },
+
+  async deleteEvent(id) {
+    check(await supabase.from('events').delete().eq('id', id));
+  },
+
+  async addPickupSpot(name) {
+    const rows = check(await supabase.from('pickup_locations').select('sort_order').order('sort_order', { ascending: false }).limit(1)) ?? [];
+    const next = rows.length ? (rows[0] as Row).sort_order + 1 : 0;
+    check(await supabase.from('pickup_locations').insert({ name: name.trim(), sort_order: next }));
+  },
+
+  async renamePickupSpot(id, name) {
+    check(await supabase.from('pickup_locations').update({ name: name.trim() }).eq('id', id));
+  },
+
+  async removePickupSpot(id) {
+    // Soft delete: hides it from the dropdown but keeps old sign-ups intact.
+    check(await supabase.from('pickup_locations').update({ active: false }).eq('id', id));
+  },
+};
