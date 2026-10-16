@@ -37,6 +37,8 @@ export interface RidesApi {
   signInDriver(email: string): Promise<{ linkSent: boolean }>;
   signInAdmin(username: string, password: string): Promise<void>;
   signOut(): Promise<void>;
+  /** Changes the password of whoever is signed in (used for the shared admin login). */
+  changePassword(newPassword: string): Promise<void>;
 
   // Drivers
   getDriverProfile(): Promise<DriverProfile | null>;

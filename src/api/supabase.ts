@@ -159,6 +159,11 @@ export const supabaseApi: RidesApi = {
     await supabase.auth.signOut();
   },
 
+  async changePassword(newPassword) {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message);
+  },
+
   async getDriverProfile() {
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) return null;

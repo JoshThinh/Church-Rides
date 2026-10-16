@@ -270,6 +270,10 @@ export const demoApi: RidesApi = {
     emit(null);
   },
 
+  async changePassword() {
+    throw new Error('Password changes only work when the site is connected to Supabase.');
+  },
+
   async getDriverProfile() {
     const db = load();
     const s = db.session;

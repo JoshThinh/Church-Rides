@@ -120,6 +120,7 @@ function AdminHome() {
             }}
           />
           <PickupSpots />
+          <ChangePassword />
         </aside>
       </div>
     </div>
@@ -324,5 +325,54 @@ function SpotRow({ spot, onRename, onRemove }: { spot: PickupSpot; onRename: (n:
         </button>
       </span>
     </li>
+  );
+}
+
+function ChangePassword() {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setDone(false);
+    if (password.length < 8) return setError('Use at least 8 characters.');
+    if (password !== confirm) return setError("The two passwords don't match.");
+    setError(null);
+    setBusy(true);
+    try {
+      await api.changePassword(password);
+      setPassword('');
+      setConfirm('');
+      setDone(true);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="card form" onSubmit={submit} noValidate>
+      <h2 className="form__title">Change admin password</h2>
+      <p className="muted small">Everyone who uses the admin login will need the new password.</p>
+      <Field id="pw-new" label="New password">
+        <input id="pw-new" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </Field>
+      <Field id="pw-confirm" label="Type it again">
+        <input id="pw-confirm" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+      </Field>
+      {error && <ErrorNote message={error} />}
+      {done && (
+        <p className="note note--ok" role="status">
+          Password changed.
+        </p>
+      )}
+      <button className="btn btn--ghost" disabled={busy}>
+        {busy ? 'Saving…' : 'Change password'}
+      </button>
+    </form>
   );
 }

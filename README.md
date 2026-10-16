@@ -46,9 +46,21 @@ With no Supabase keys, the site runs in **demo mode**. Data is saved only in you
 5. Copy `.env.example` to `.env.local` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from Project Settings → API.
 6. Optional: turn on the **pg_cron** extension and run the commented cleanup block at the bottom of `schema.sql`. It deletes old group chat links every night.
 
-## Deploy
+## Deploy (GitHub Pages)
 
-Push to GitHub, import the repo on [Vercel](https://vercel.com), and add the same `VITE_…` environment variables. Build command: `npm run build`. Output folder: `dist`.
+The site is live at **https://joshthinh.github.io/Church-Rides/**.
+
+`.github/workflows/deploy.yml` type-checks, tests, builds, and publishes the site every time you push to `main`. You can watch it run in the repo's **Actions** tab.
+
+One-time setup:
+1. GitHub repo → **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+2. Supabase → **Authentication → URL Configuration**: set **Site URL** to `https://joshthinh.github.io/Church-Rides/`, and add that URL plus `http://localhost:5173` under **Redirect URLs**.
+
+Don't use "Deploy from a branch". That publishes the raw source files, which shows a blank white page.
+
+## Admin password
+
+Sign in at **☰ → Admin login**, then use **Change admin password** at the bottom of the admin page.
 
 ## How the security works
 
