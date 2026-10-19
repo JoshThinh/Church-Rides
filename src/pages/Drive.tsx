@@ -5,6 +5,7 @@ import { groupByStop } from '../lib/assign';
 import { formatDay, formatRange, formatTime, fromLocalInput, toLocalInput } from '../lib/format';
 import { errorMessage, useAsync } from '../lib/useAsync';
 import { driverProfileSchema, fieldErrors, formatPhone, isMessengerLink, offerSchema } from '../lib/validation';
+import { loadLastEmail, saveLastEmail, setKeepSignedIn } from '../lib/storage';
 import { useSession, useSessionReady } from '../session';
 import type { DriverOffer, DriverProfile, PickupSpot, RideEvent } from '../types';
 import { CATEGORY_LABELS } from '../types';
@@ -17,7 +18,7 @@ export function Drive() {
   if (!session || session.role !== 'driver') {
     return (
       <div className="page page--narrow">
-        <PageTitle sub="Sign in to register your car, offer seats, and see who you're picking up.">Drive</PageTitle>
+        <PageTitle sub="Sign in to register your car, offer seats, and see who you're picking up. You only need to sign in once on each device.">Drive</PageTitle>
         {session?.role === 'admin' && (
           <p className="note">You're signed in as admin. Sign out from the menu to sign in as a driver.</p>
         )}
@@ -29,22 +30,27 @@ export function Drive() {
 }
 
 function DriverSignIn() {
-  const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
+  const [mode, setMode] = useState<'signin' | 'signup'>(() => (loadLastEmail() ? 'signin' : 'signup'));
+  const [email, setEmail] = useState(loadLastEmail);
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [keep, setKeep] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const signup = mode === 'signup';
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
-      setError('Enter your email address.');
-      return;
-    }
-    setBusy(true);
     setError(null);
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError('Enter your email address.');
+    if (password.length < 8) return setError(signup ? 'Use at least 8 characters for your password.' : 'Enter your password.');
+    if (signup && password !== confirm) return setError("The two passwords don't match.");
+    setBusy(true);
     try {
-      const { linkSent } = await api.signInDriver(email.trim());
-      setSent(linkSent);
+      setKeepSignedIn(keep);
+      if (signup) await api.signUpDriver(email, password);
+      else await api.signInDriver(email, password);
+      saveLastEmail(email.trim().toLowerCase());
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -52,32 +58,61 @@ function DriverSignIn() {
     }
   }
 
-  if (sent) {
-    return (
-      <div className="card">
-        <h2 className="form__title">Check your email</h2>
-        <p>We sent a sign-in link to {email}. Open it on this device to continue.</p>
-      </div>
-    );
-  }
-
   return (
-    <form className="card form" onSubmit={submit} noValidate>
-      <Field id="driver-email" label="Email" hint="We'll email you a sign-in link. No password needed." error={error ?? undefined}>
+    // method="post" + autocomplete hints let the phone's password manager offer to save the password.
+    <form className="card form" method="post" action="#" onSubmit={submit} noValidate>
+      <div className="segmented segmented--two" role="tablist" aria-label="Sign in or create an account">
+        <button type="button" role="tab" aria-selected={!signup} className={`segmented__option${!signup ? ' is-checked' : ''}`} onClick={() => setMode('signin')}>
+          Sign in
+        </button>
+        <button type="button" role="tab" aria-selected={signup} className={`segmented__option${signup ? ' is-checked' : ''}`} onClick={() => setMode('signup')}>
+          New driver
+        </button>
+      </div>
+
+      <Field id="driver-email" label="Email">
         <input
           id="driver-email"
+          name="username"
           type="email"
           inputMode="email"
-          autoComplete="email"
+          autoComplete="username"
+          autoCapitalize="none"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          aria-describedby="driver-email-hint"
         />
       </Field>
+      <Field id="driver-password" label={signup ? 'Create a password' : 'Password'} hint={signup ? 'At least 8 characters.' : undefined}>
+        <input
+          id="driver-password"
+          name="password"
+          type="password"
+          autoComplete={signup ? 'new-password' : 'current-password'}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+      </Field>
+      {signup && (
+        <Field id="driver-confirm" label="Type it again">
+          <input id="driver-confirm" name="confirm-password" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+        </Field>
+      )}
+
+      <label className="check">
+        <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
+        <span>Keep me signed in on this device</span>
+      </label>
+
+      {error && <ErrorNote message={error} />}
       <button className="btn btn--primary btn--block" disabled={busy}>
-        {busy ? 'Sending…' : api.mode === 'demo' ? 'Sign in (demo)' : 'Email me a sign-in link'}
+        {busy ? (signup ? 'Creating account…' : 'Signing in…') : signup ? 'Create driver account' : 'Sign in'}
       </button>
-      {api.mode === 'demo' && <p className="muted small">Demo mode signs you in right away with any email.</p>}
+      <p className="muted small">
+        {signup
+          ? 'Your phone may offer to save the password, so signing in later takes one tap.'
+          : 'Forgot your password? Ask a ride coordinator to reset it from the admin page.'}
+      </p>
+      {api.mode === 'demo' && <p className="muted small">Demo mode: accounts are saved only in this browser.</p>}
     </form>
   );
 }

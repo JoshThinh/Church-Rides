@@ -18,7 +18,7 @@ export function About() {
 
       <h2>Drivers</h2>
       <ol>
-        <li>Open the menu and choose "Drive / register my car." Sign in with your email.</li>
+        <li>Open the menu and choose "Drive / register my car." Create an account with your email and a password. You'll stay signed in on that phone.</li>
         <li>Add your car and how many seats you have.</li>
         <li>Offer a ride and paste your Messenger group chat link.</li>
         <li>Your riders show up grouped by pickup spot, with call and text buttons.</li>

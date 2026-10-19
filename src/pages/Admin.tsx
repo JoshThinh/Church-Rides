@@ -5,6 +5,7 @@ import { DateBlock, Empty, ErrorNote, Field, Loading, PageTitle } from '../compo
 import { formatClock, formatRange, fromLocalInput, hasEnded, toLocalInput } from '../lib/format';
 import { errorMessage, useAsync } from '../lib/useAsync';
 import { eventSchema, fieldErrors, seriesSchema } from '../lib/validation';
+import { setKeepSignedIn } from '../lib/storage';
 import { useSession, useSessionReady } from '../session';
 import type { Category, PickupSpot, RideEvent, RideSeries, WeeklyCategory } from '../types';
 import { CATEGORY_LABELS, WEEKDAYS } from '../types';
@@ -30,6 +31,7 @@ export function Admin() {
 function AdminLogin() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [keep, setKeep] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -39,6 +41,7 @@ function AdminLogin() {
     setBusy(true);
     setError(null);
     try {
+      setKeepSignedIn(keep);
       await api.signInAdmin(username, password);
     } catch (err) {
       setError(errorMessage(err));
@@ -48,13 +51,17 @@ function AdminLogin() {
   }
 
   return (
-    <form className="card form" onSubmit={submit} noValidate>
+    <form className="card form" method="post" action="#" onSubmit={submit} noValidate>
       <Field id="a-user" label="Username">
         <input id="a-user" autoCapitalize="none" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} />
       </Field>
       <Field id="a-pass" label="Password">
         <input id="a-pass" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </Field>
+      <label className="check">
+        <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
+        <span>Keep me signed in on this device</span>
+      </label>
       {error && <ErrorNote message={error} />}
       <button className="btn btn--primary btn--block" disabled={busy}>
         {busy ? 'Signing in…' : 'Sign in'}
@@ -131,6 +138,7 @@ function AdminHome() {
             }}
           />
           <PickupSpots />
+          <ResetDriverPassword />
           <ChangePassword />
         </aside>
       </div>
@@ -529,6 +537,55 @@ function SeriesForm({ initial, onDone, onCancel }: { initial: RideSeries | null;
         </button>
       )}
       <p className="muted small">Changes apply to upcoming dates. Dates that already have riders or drivers keep their signups.</p>
+    </form>
+  );
+}
+
+/** For drivers who forgot their password: a coordinator sets a new one and tells them. */
+function ResetDriverPassword() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setDone(null);
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError("Enter the driver's email.");
+    if (password.length < 8) return setError('Use at least 8 characters.');
+    setError(null);
+    setBusy(true);
+    try {
+      await api.resetDriverPassword(email, password);
+      setDone(`New password set for ${email.trim()}. Send it to them so they can sign in.`);
+      setPassword('');
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="card form" onSubmit={submit} noValidate>
+      <h2 className="form__title">Reset a driver's password</h2>
+      <p className="muted small">For a driver who forgot theirs. Set a temporary password and send it to them.</p>
+      <Field id="rd-email" label="Driver's email">
+        <input id="rd-email" type="email" inputMode="email" autoCapitalize="none" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </Field>
+      <Field id="rd-pass" label="New password">
+        <input id="rd-pass" type="text" autoComplete="off" autoCapitalize="none" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </Field>
+      {error && <ErrorNote message={error} />}
+      {done && (
+        <p className="note note--ok" role="status">
+          {done}
+        </p>
+      )}
+      <button className="btn btn--ghost" disabled={busy}>
+        {busy ? 'Saving…' : 'Set new password'}
+      </button>
     </form>
   );
 }

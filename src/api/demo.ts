@@ -44,6 +44,8 @@ interface DemoDb {
   offers: StoredOffer[];
   requests: StoredRequest[];
   session: Session;
+  /** Demo only: driver passwords in plain text. The real site never stores passwords like this. */
+  passwords?: Record<string, string>;
 }
 
 const DB_KEY = 'lbc-rides:demo-db-v2';
@@ -282,14 +284,29 @@ export const demoApi: RidesApi = {
     return () => listeners.delete(cb);
   },
 
-  async signInDriver(email) {
+  async signInDriver(email, password) {
     await wait();
-    const session: Session = { role: 'driver', userId: `demo:${email.toLowerCase()}`, email };
-    update((db) => {
-      db.session = session;
+    const key = email.trim().toLowerCase();
+    const db = load();
+    if (db.passwords?.[key] !== password) throw new Error('Wrong email or password.');
+    const session: Session = { role: 'driver', userId: `demo:${key}`, email: key };
+    update((d) => {
+      d.session = session;
     });
     emit(session);
-    return { linkSent: false };
+  },
+
+  async signUpDriver(email, password) {
+    await wait();
+    const key = email.trim().toLowerCase();
+    const session: Session = { role: 'driver', userId: `demo:${key}`, email: key };
+    update((d) => {
+      d.passwords = d.passwords ?? {};
+      if (d.passwords[key]) throw new Error('An account with this email already exists. Sign in instead.');
+      d.passwords[key] = password;
+      d.session = session;
+    });
+    emit(session);
   },
 
   async signInAdmin(username, password) {
@@ -441,6 +458,15 @@ export const demoApi: RidesApi = {
       const gone = new Set(db.offers.filter((o) => o.eventId === eventId).map((o) => o.id));
       db.offers = db.offers.filter((o) => !gone.has(o.id));
       db.requests = db.requests.filter((r) => r.eventId !== eventId);
+    });
+  },
+
+  async resetDriverPassword(email, newPassword) {
+    update((db) => {
+      requireRole(db, 'admin');
+      const key = email.trim().toLowerCase();
+      if (!db.passwords?.[key]) throw new Error('No account uses that email.');
+      db.passwords[key] = newPassword;
     });
   },
 

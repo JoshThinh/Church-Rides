@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api } from './api';
+import { shouldEndOldSession } from './lib/storage';
 import type { Session } from './types';
 
 const SessionContext = createContext<{ session: Session; ready: boolean }>({ session: null, ready: false });
@@ -10,10 +11,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    void api.getSession().then((s) => {
-      setSession(s);
+    void (async () => {
+      // "This visit only" sign-ins end when the browser is closed and reopened.
+      if (shouldEndOldSession()) await api.signOut();
+      setSession(await api.getSession());
       setReady(true);
-    });
+    })();
     return api.onSessionChange(setSession);
   }, []);
 

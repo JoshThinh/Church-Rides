@@ -61,3 +61,36 @@ export function removeRideToken(token: string): void {
     loadRideTokens().filter((t) => t !== token),
   );
 }
+
+// "Keep me signed in on this device"
+// Supabase already remembers a signed-in driver on this device. When someone
+// unticks the box (e.g. on a friend's phone), we mark the sign-in as
+// "this visit only" and sign them out the next time the site is opened.
+const SESSION_ONLY_KEY = 'lbc-rides:session-only';
+const ALIVE_KEY = 'lbc-rides:alive';
+
+export function setKeepSignedIn(keep: boolean): void {
+  try {
+    if (keep) localStorage.removeItem(SESSION_ONLY_KEY);
+    else localStorage.setItem(SESSION_ONLY_KEY, '1');
+    sessionStorage.setItem(ALIVE_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+/** True when the last sign-in was "this visit only" and the browser has since been closed. */
+export function shouldEndOldSession(): boolean {
+  try {
+    const ended = localStorage.getItem(SESSION_ONLY_KEY) === '1' && sessionStorage.getItem(ALIVE_KEY) !== '1';
+    if (ended) localStorage.removeItem(SESSION_ONLY_KEY);
+    return ended;
+  } catch {
+    return false;
+  }
+}
+
+/** Remembers the last email used to sign in, to fill it in next time. */
+const LAST_EMAIL_KEY = 'lbc-rides:driver-email';
+export const loadLastEmail = (): string => read<string>(LAST_EMAIL_KEY, '');
+export const saveLastEmail = (email: string): void => write(LAST_EMAIL_KEY, email);

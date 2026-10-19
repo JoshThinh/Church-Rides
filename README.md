@@ -3,7 +3,7 @@
 A mobile-first web app that helps SDSU students get rides to **Church**, **CL**, and **Events**, and gives drivers an organized list of who they're picking up, where, and when.
 
 - **Riders:** pick a ride, choose a pickup spot (Zura Loop, Eureka Loop, …), and pick a driver or "Any driver." No account needed. "Remember me" saves their details on their own phone, so next time signing up takes one tap.
-- **Drivers:** sign in with an email link, register a car, offer seats, and paste a **Messenger group chat join link**. Riders in their car get a "Join group chat" button, which **disappears automatically once the event ends**.
+- **Drivers:** create an account with an email and password (they stay signed in on their own device), register a car, offer seats, and paste a **Messenger group chat join link**. Riders in their car get a "Join group chat" button, which **disappears automatically once the event ends**.
 - **Admins:** one shared username and password. Admins add events (what it is, start → end time, where) and manage the pickup-spot list.
 
 Works on phones, tablets, and desktops (responsive layout, 48px touch targets, iPhone notch safe areas, dark mode, reduced-motion support, and keyboard and screen-reader friendly).
@@ -42,7 +42,7 @@ With no Supabase keys, the site runs in **demo mode**. Data is saved only in you
      where email = 'admin@lbcrides.app';
      ```
    - On the site, sign in with username `admin` and that password.
-4. Go to Authentication → URL Configuration and add your site URL (and `http://localhost:5173`) to **Redirect URLs**, so driver email links work.
+4. Go to **Authentication → Sign In / Providers → Email** and turn **off** "Confirm email". Drivers sign up with a password, so no emails are sent. If a driver forgets their password, an admin resets it on the admin page.
 5. Copy `.env.example` to `.env.local` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from Project Settings → API.
 6. Optional: turn on the **pg_cron** extension and run the commented cleanup block at the bottom of `schema.sql`. It deletes old group chat links every night.
 

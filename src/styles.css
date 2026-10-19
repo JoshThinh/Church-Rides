@@ -25,7 +25,11 @@
   --ok: #1f6b3a;
   --focus: #2b6cff;
 
-  --cat: var(--navy);      /* overridden by .cat-* */
+  --accent: #1f2c80;       /* links and highlights on light backgrounds */
+  --btn: #e3cf8f;          /* main buttons: church gold */
+  --btn-hover: #d6bd72;
+  --btn-text: #0d1440;
+  --cat: var(--accent);    /* overridden by .cat-* */
   --cat-tint: #e6e8f2;
 
   --font-display: 'Barlow', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
@@ -56,6 +60,10 @@
     --ok: #7fd49b;
     --focus: #8fb2ff;
     --cat-tint: #1f2752;
+    --accent: #b9c4ff;
+    --btn: #e3cf8f;
+    --btn-hover: #f0dea6;
+    --btn-text: #0d1440;
     color-scheme: dark;
   }
 }
@@ -624,6 +632,7 @@ input[type='datetime-local'] { min-width: 0; }
   cursor: pointer;
 }
 .segmented__option input { position: absolute; opacity: 0; pointer-events: none; }
+button.segmented__option { background: var(--paper); font: inherit; font-weight: 700; color: var(--muted); }
 .segmented__option.is-checked { border-color: var(--cat); background: var(--cat-tint); color: var(--cat); }
 .segmented__option:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
 
@@ -660,12 +669,13 @@ input[type='datetime-local'] { min-width: 0; }
 .btn:disabled { opacity: 0.6; cursor: progress; }
 .btn--block { width: 100%; }
 .btn--small { min-height: 40px; padding: 6px 14px; font-size: 0.93rem; }
-.btn--primary { background: var(--cat); color: var(--paper); }
-.btn--primary:hover { background: color-mix(in srgb, var(--cat) 86%, black); }
-.btn--ghost { background: transparent; border-color: var(--line); }
-.btn--ghost:hover { border-color: var(--ink); }
+.btn--primary { background: var(--btn); color: var(--btn-text); border-color: color-mix(in srgb, var(--btn) 70%, var(--btn-text)); }
+.btn--primary:hover { background: var(--btn-hover); }
+.btn--ghost { background: var(--paper); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.btn--ghost:hover { border-color: var(--accent); background: var(--cat-tint); }
 .btn--danger { background: var(--danger); color: var(--paper); }
-.btn--messenger { background: var(--cat); color: var(--paper); }
+.btn--messenger { background: var(--btn); color: var(--btn-text); border-color: color-mix(in srgb, var(--btn) 70%, var(--btn-text)); }
+.btn--messenger:hover { background: var(--btn-hover); }
 
 .link-button {
   border: 0;
