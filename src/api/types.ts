@@ -3,6 +3,8 @@ import type {
   DriverOffer,
   DriverProfile,
   EventInput,
+  RideSeries,
+  SeriesInput,
   MyRide,
   NewOffer,
   PickupSpot,
@@ -53,6 +55,9 @@ export interface RidesApi {
   createEvent(e: EventInput): Promise<void>;
   updateEvent(id: string, e: EventInput): Promise<void>;
   deleteEvent(id: string): Promise<void>;
+  /** Weekly rides (Church, CL). Saving one updates its upcoming dates. */
+  listSeries(): Promise<RideSeries[]>;
+  saveSeries(input: SeriesInput, id?: string): Promise<void>;
   addPickupSpot(name: string): Promise<void>;
   renamePickupSpot(id: string, name: string): Promise<void>;
   removePickupSpot(id: string): Promise<void>;

@@ -4,25 +4,31 @@
    add layout for tablets (≥ 640px) and laptops/desktops (≥ 960px).
    ========================================================================== */
 
-/* ---------- Design tokens ---------- */
+/* ---------- Design tokens ----------
+   Colors follow Lighthouse Bible Church: deep navy, warm gold, cream. */
 :root {
-  --ink: #16233a;          /* text, header */
-  --mist: #eef2f1;         /* page background */
+  --navy: #0d1440;         /* brand navy: top bar, hero banner */
+  --gold: #e3d39c;         /* banner frame */
+  --gold-bright: #dcb866;  /* gold text on navy */
+  --cream: #f7f2e2;        /* text on navy */
+
+  --ink: #131a3d;          /* body text */
+  --mist: #f3f4f8;         /* page background */
   --paper: #ffffff;        /* cards and forms */
-  --line: #d3dcda;         /* borders */
-  --muted: #526276;        /* secondary text */
-  --route: #f2b33d;        /* the route line */
-  --church: #0f5257;
+  --line: #d8dbe7;         /* borders */
+  --muted: #535b78;        /* secondary text */
+  --route: #d9b45f;        /* the route line */
+  --church: #1f2c80;       /* royal blue, like the church's mission text */
   --cl: #6a3e8c;
-  --event: #94560a;
+  --event: #82621a;        /* deep gold that reads on white */
   --danger: #b3261e;
   --ok: #1f6b3a;
   --focus: #2b6cff;
 
-  --cat: var(--ink);       /* overridden by .cat-* */
-  --cat-tint: #e3e8ef;
+  --cat: var(--navy);      /* overridden by .cat-* */
+  --cat-tint: #e6e8f2;
 
-  --font-display: 'Bricolage Grotesque', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Barlow', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
   --font-body: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   --radius-sm: 8px;
@@ -30,25 +36,26 @@
   --gutter: max(16px, env(safe-area-inset-left));
   --gutter-r: max(16px, env(safe-area-inset-right));
   --tap: 48px;             /* minimum touch target */
-  --topbar: 60px;
+  --topbar: 62px;
 
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --ink: #e9eef6;
-    --mist: #0e1626;
-    --paper: #172238;
-    --line: #2b3a55;
-    --muted: #a3b1c6;
-    --church: #5ec4c4;
-    --cl: #c9a2ea;
-    --event: #f0b45a;
+    --navy: #0a0f30;
+    --ink: #eceef8;
+    --mist: #0b1029;
+    --paper: #151c42;
+    --line: #2a3263;
+    --muted: #a7aecb;
+    --church: #9fb0ff;
+    --cl: #cfa8f0;
+    --event: #e9c46f;
     --danger: #ff8a80;
     --ok: #7fd49b;
     --focus: #8fb2ff;
-    --cat-tint: #22304a;
+    --cat-tint: #1f2752;
     color-scheme: dark;
   }
 }
@@ -134,15 +141,10 @@ main {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: var(--mist);
-  border-bottom: 1px solid var(--line);
+  background: var(--navy);
+  color: var(--cream);
+  border-bottom: 3px solid var(--gold);
   padding-top: env(safe-area-inset-top);
-}
-@supports (backdrop-filter: blur(8px)) {
-  .topbar {
-    background: color-mix(in srgb, var(--mist) 85%, transparent);
-    backdrop-filter: blur(10px);
-  }
 }
 
 .topbar__inner {
@@ -161,10 +163,13 @@ main {
   gap: 10px;
   text-decoration: none;
   font-family: var(--font-display);
-  font-weight: 750;
-  font-size: 1.25rem;
+  font-weight: 800;
+  font-size: 1.3rem;
+  letter-spacing: 0.01em;
   min-height: var(--tap);
+  color: var(--cream);
 }
+.wordmark svg { --route: var(--gold-bright); }
 
 .menu-button, .icon-button {
   display: grid;
@@ -176,7 +181,8 @@ main {
   background: transparent;
   cursor: pointer;
 }
-.menu-button:hover, .icon-button:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.menu-button:hover, .icon-button:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
+.menu-button { color: var(--cream); }
 
 .menu-button__bars { display: grid; gap: 5px; }
 .menu-button__bars span {
@@ -306,21 +312,44 @@ main {
 
 .stack { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
 
-/* ---------- Home: hero + route map ---------- */
+/* ---------- Home: hero banner + route map ----------
+   A navy banner in a gold frame with a cream inner line, like the church's own banner. */
 .hero {
+  margin-top: 4px;
+  padding: 7px;
+  border-radius: 22px;
+  background: var(--gold);
+}
+.hero__inner {
   display: grid;
   gap: 24px;
-  padding: 12px 0 8px;
+  padding: 24px 20px 22px;
+  border-radius: 16px;
+  background: var(--navy);
+  color: var(--cream);
+  box-shadow: inset 0 0 0 3px var(--cream);
 }
-.hero__greeting { color: var(--muted); font-size: 1.05rem; margin-bottom: 4px; }
+.hero__today { color: var(--gold-bright); font-weight: 700; font-size: 1rem; margin-bottom: 8px; }
 .hero__title {
-  font-size: clamp(2.4rem, 11vw, 4.4rem);
+  font-size: clamp(2.3rem, 10vw, 4.2rem);
   font-weight: 800;
   line-height: 1.0;
-  letter-spacing: -0.025em;
-  max-width: 11ch;
+  letter-spacing: -0.01em;
+  max-width: 13ch;
+  color: var(--cream);
 }
-.hero__lede { margin-top: 14px; max-width: 42ch; color: var(--muted); font-size: 1.08rem; }
+.hero__lede { margin-top: 14px; max-width: 42ch; color: color-mix(in srgb, var(--cream) 82%, var(--navy)); font-size: 1.05rem; }
+.hero__schedule {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.1rem, 4.4vw, 1.45rem);
+  color: var(--gold-bright);
+}
 
 .route-map { margin: 0; }
 .route-map__stops {
@@ -346,11 +375,12 @@ main {
   position: relative;
   padding-left: calc(var(--dot) + 14px);
   line-height: 1.25;
-  min-height: 34px;
+  min-height: 32px;
   display: flex;
   align-items: center;
   font-weight: 700;
   font-size: 0.98rem;
+  color: var(--cream);
   animation: stop-in 380ms ease both;
 }
 .route-map__stop::before {
@@ -359,21 +389,22 @@ main {
   left: 0;
   width: var(--dot); height: var(--dot);
   border-radius: 50%;
-  background: var(--paper);
-  border: 3px solid var(--ink);
+  background: var(--navy);
+  border: 3px solid var(--cream);
 }
 .route-map__stop.route-map__stop--end {
   font-family: var(--font-display);
   font-size: 1.35rem;
   font-weight: 800;
   min-height: 46px;
+  color: var(--gold-bright);
 }
 .route-map__stop--end::before {
   --big: 24px;
   width: var(--big); height: var(--big);
   left: calc((var(--dot) - var(--big)) / 2);
   background: var(--route);
-  border-color: var(--ink);
+  border-color: var(--cream);
   border-width: 4px;
 }
 .route-map__stop:nth-child(1) { animation-delay: 120ms; }
@@ -390,14 +421,9 @@ main {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
-/* Phones: put the route map on its own panel under the headline */
+/* Phones: separate the route map from the headline with a thin gold rule */
 @media (max-width: 639px) {
-  .route-map {
-    background: var(--paper);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 16px 16px 12px;
-  }
+  .route-map { padding-top: 18px; border-top: 1px solid color-mix(in srgb, var(--gold) 45%, transparent); }
 }
 
 .next-ride {
@@ -406,8 +432,9 @@ main {
   margin-top: 24px;
   padding: 14px 16px;
   border-radius: var(--radius);
-  background: var(--ink);
-  color: var(--mist);
+  background: var(--paper);
+  border: 2px solid var(--gold);
+  color: var(--ink);
   text-decoration: none;
 }
 .next-ride__label { font-size: 0.85rem; opacity: 0.8; }
@@ -432,7 +459,11 @@ main {
 .destination:active { transform: scale(0.99); }
 .destination__name { font-family: var(--font-display); font-weight: 750; font-size: 1.45rem; color: var(--cat); }
 .destination__blurb { color: var(--muted); }
-.destination__next { margin-top: 6px; font-weight: 700; font-size: 0.95rem; }
+.destination__next { margin-top: 8px; display: grid; gap: 0; font-weight: 700; font-size: 0.95rem; }
+.destination__when { font-size: 0.95rem; color: var(--muted); }
+.destination__when.is-soon { color: var(--event); }
+.destination__times { font-family: var(--font-display); font-weight: 800; font-size: 1.3rem; color: var(--ink); }
+.destination__more { font-weight: 400; color: var(--muted); font-size: 0.88rem; }
 .destination__arrow { position: absolute; right: 16px; top: 50%; translate: 0 -50%; color: var(--cat); }
 
 .drive-prompt {
@@ -767,6 +798,35 @@ input[type='datetime-local'] { min-width: 0; }
 .spot__actions { display: flex; gap: 14px; }
 .spot--editing { flex-wrap: nowrap; gap: 8px; }
 
+/* ---------- Day groups (ride lists) ---------- */
+.day-group + .day-group { margin-top: 22px; }
+.day-group__label { font-size: 1.15rem; font-weight: 800; margin: 0 0 10px; }
+.day-group__label.is-soon { color: var(--cat); }
+
+/* ---------- Admin: weekly rides ---------- */
+.weekly { margin-bottom: 8px; }
+.weekly .section-heading { margin-top: 0; }
+.weekly__note { margin: -4px 0 12px; }
+.weekly__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.weekly__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--cat);
+  border-radius: var(--radius-sm);
+}
+.weekly__item.is-paused { opacity: 0.6; }
+.weekly__body { display: grid; gap: 2px; min-width: 0; }
+.weekly__title { font-weight: 700; }
+.weekly__meta { color: var(--muted); font-size: 0.93rem; }
+.weekly__form .form__title { font-size: 1.2rem; }
+.segmented--two { grid-template-columns: repeat(2, 1fr); }
+.filter-row { display: flex; flex-wrap: wrap; gap: 0 18px; margin: -6px 0 8px; }
+
 /* ---------- About ---------- */
 .prose h2 { font-size: 1.35rem; margin: 26px 0 8px; }
 .prose ol { padding-left: 1.3em; margin: 0 0 12px; display: grid; gap: 6px; }
@@ -778,11 +838,11 @@ input[type='datetime-local'] { min-width: 0; }
 @media (min-width: 640px) {
   .page, .home { padding-top: 32px; }
 
-  .hero {
-    grid-template-columns: 1.3fr 1fr;
+  .hero__inner {
+    grid-template-columns: 1.4fr 1fr;
     align-items: center;
-    gap: 40px;
-    padding: 24px 0 16px;
+    gap: 36px;
+    padding: 36px 36px 32px;
   }
 
   .destinations { grid-template-columns: repeat(3, 1fr); }
@@ -810,7 +870,8 @@ input[type='datetime-local'] { min-width: 0; }
 @media (min-width: 960px) {
   body { font-size: 1.125rem; }  /* 18px */
 
-  .hero { grid-template-columns: 1.5fr 1fr; gap: 64px; padding-top: 40px; }
+  .hero { margin-top: 12px; }
+  .hero__inner { grid-template-columns: 1.6fr 1fr; gap: 56px; padding: 48px 56px 44px; }
   .route-map__stops { --dot: 16px; }
   .route-map__stop { min-height: 40px; font-size: 1.05rem; }
 
@@ -832,7 +893,7 @@ input[type='datetime-local'] { min-width: 0; }
 
 /* Phones turned sideways: keep things compact */
 @media (max-height: 480px) and (orientation: landscape) {
-  .hero { grid-template-columns: 1.2fr 1fr; align-items: center; }
+  .hero__inner { grid-template-columns: 1.2fr 1fr; align-items: center; }
   .hero__title { font-size: 2.4rem; }
   .route-map__stop { min-height: 28px; }
 }

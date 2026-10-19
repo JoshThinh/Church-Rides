@@ -4,7 +4,7 @@
 // Security lives in the database (see supabase/schema.sql), not here.
 
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
-import type { DriverOffer, EventInput, PickupSpot, PublicOffer, RideEvent, Session } from '../types';
+import type { DriverOffer, EventInput, PickupSpot, PublicOffer, RideEvent, RideSeries, SeriesInput, Session } from '../types';
 import type { RidesApi } from './types';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string;
@@ -29,7 +29,42 @@ const toEvent = (r: Row): RideEvent => ({
   startsAt: r.starts_at,
   endsAt: r.ends_at,
   destination: r.destination ?? '',
+  seriesId: r.series_id ?? null,
 });
+
+const toSeries = (r: Row): RideSeries => ({
+  id: r.id,
+  category: r.category,
+  title: r.title,
+  description: r.description ?? '',
+  weekday: r.weekday,
+  startTime: String(r.start_time).slice(0, 5),
+  endTime: String(r.end_time).slice(0, 5),
+  destination: r.destination ?? '',
+  active: r.active,
+});
+
+const fromSeries = (s: SeriesInput) => ({
+  category: s.category,
+  title: s.title,
+  description: s.description,
+  weekday: s.weekday,
+  start_time: s.startTime,
+  end_time: s.endTime,
+  destination: s.destination,
+  active: s.active,
+});
+
+/**
+ * Asks the database to post the next few weeks of Church/CL dates.
+ * Runs at most once an hour per open page; it's safe to run any number of times.
+ */
+let lastEnsured = 0;
+async function ensureUpcoming(): Promise<void> {
+  if (Date.now() - lastEnsured < 60 * 60 * 1000) return;
+  lastEnsured = Date.now();
+  await supabase.rpc('ensure_upcoming_events');
+}
 
 const fromEvent = (e: EventInput) => ({
   category: e.category,
@@ -69,7 +104,8 @@ export const supabaseApi: RidesApi = {
   },
 
   async listUpcomingEvents(category) {
-    let q = supabase.from('events').select('*').gt('ends_at', new Date().toISOString()).order('starts_at');
+    await ensureUpcoming();
+    let q = supabase.from('events').select('*').eq('cancelled', false).gt('starts_at', new Date().toISOString()).order('starts_at');
     if (category) q = q.eq('category', category);
     return (check(await q) ?? []).map(toEvent);
   },
@@ -235,7 +271,24 @@ export const supabaseApi: RidesApi = {
   },
 
   async listAllEvents() {
-    return (check(await supabase.from('events').select('*').order('starts_at')) ?? []).map(toEvent);
+    await ensureUpcoming();
+    return (check(await supabase.from('events').select('*').eq('cancelled', false).order('starts_at')) ?? []).map(toEvent);
+  },
+
+  async listSeries() {
+    return (check(await supabase.from('ride_series').select('*').order('weekday').order('start_time')) ?? []).map(toSeries);
+  },
+
+  async saveSeries(input, id) {
+    let seriesId = id;
+    if (id) {
+      check(await supabase.from('ride_series').update(fromSeries(input)).eq('id', id));
+    } else {
+      const row = check(await supabase.from('ride_series').insert(fromSeries(input)).select('id').single()) as Row;
+      seriesId = row.id;
+    }
+    check(await supabase.rpc('sync_series', { p_series_id: seriesId }));
+    lastEnsured = Date.now();
   },
 
   async createEvent(e) {

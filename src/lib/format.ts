@@ -40,3 +40,42 @@ export function fromLocalInput(value: string): string {
 export function hasEnded(event: { endsAt: string }, now = new Date()): boolean {
   return new Date(event.endsAt) <= now;
 }
+
+/** "Friday, October 16" */
+export function formatToday(now = new Date()): string {
+  return now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+/** Whole days from today to the day of `iso` (0 = today, 1 = tomorrow). */
+export function daysFromToday(iso: string, now = new Date()): number {
+  const a = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const d = new Date(iso);
+  const b = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
+}
+
+/** "Today", "Tomorrow", "This Sunday", or "Sun, Oct 25" for later dates. */
+export function relativeDay(iso: string, now = new Date()): string {
+  const days = daysFromToday(iso, now);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  if (days > 1 && days < 7) return `This ${new Date(iso).toLocaleDateString(undefined, { weekday: 'long' })}`;
+  return formatDay(iso);
+}
+
+/** Several start times on one day, e.g. "8:30 & 10:45 AM". */
+export function joinTimes(isos: string[]): string {
+  const times = isos.map(formatTime);
+  if (times.length <= 1) return times[0] ?? '';
+  const suffix = (t: string) => t.slice(-2);
+  const sameHalf = times.every((t) => suffix(t) === suffix(times[0]));
+  const parts = sameHalf ? times.map((t, i) => (i < times.length - 1 ? t.slice(0, -3) : t)) : times;
+  return parts.slice(0, -1).join(', ') + ' & ' + parts[parts.length - 1];
+}
+
+/** "08:30" → "8:30 AM" */
+export function formatClock(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(2000, 0, 1, h, m);
+  return formatTime(d.toISOString());
+}

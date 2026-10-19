@@ -64,3 +64,17 @@ describe('eventSchema', () => {
     expect(eventSchema.safeParse({ ...base, endsAt: '2026-11-07T08:00' }).success).toBe(false);
   });
 });
+
+import { seriesSchema } from './validation';
+
+describe('seriesSchema', () => {
+  const base = { category: 'church' as const, title: 'First service', description: '', weekday: 0, startTime: '08:30', endTime: '10:30', destination: '', active: true };
+
+  it('accepts a weekly Sunday service', () => {
+    expect(seriesSchema.safeParse(base).success).toBe(true);
+  });
+
+  it('rejects a missing start time', () => {
+    expect(seriesSchema.safeParse({ ...base, startTime: '' }).success).toBe(false);
+  });
+});

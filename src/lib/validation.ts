@@ -73,3 +73,16 @@ export function fieldErrors(error: z.ZodError): Record<string, string> {
   }
   return out;
 }
+
+export const seriesSchema = z
+  .object({
+    category: z.enum(['church', 'cl']),
+    title: z.string().trim().min(2, 'Name it, e.g. "First service".').max(80),
+    description: z.string().trim().max(400),
+    weekday: z.coerce.number().int().min(0).max(6),
+    startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Choose a start time.'),
+    endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Choose an end time.'),
+    destination: z.string().trim().max(120),
+    active: z.boolean(),
+  })
+  .refine((s) => s.endTime !== s.startTime, { message: 'End time must be different from the start time.', path: ['endTime'] });

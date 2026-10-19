@@ -162,7 +162,7 @@ declare
   v_seats   int;
 begin
   select * into v_event from events where id = p_event_id;
-  if v_event.id is null or v_event.starts_at <= now() then
+  if v_event.id is null or v_event.cancelled or v_event.starts_at <= now() then
     raise exception 'Sign-ups for this ride are closed.';
   end if;
   if not exists (select 1 from pickup_locations where id = p_pickup_id and active) then
@@ -269,3 +269,96 @@ where not exists (select 1 from pickup_locations);
 --     where email = 'admin@lbcrides.app';
 --  On the site, sign in with username "admin" and that password.
 -- ---------------------------------------------------------------------------
+
+-- ============================================================================
+-- Weekly rides (added Oct 2026): Church and CL repeat every week and post
+-- their own dates for the next 3 weeks. Times are San Diego local time.
+-- ============================================================================
+
+create table if not exists ride_series (
+  id           uuid primary key default gen_random_uuid(),
+  category     text not null check (category in ('church', 'cl')),
+  title        text not null check (char_length(title) between 2 and 80),
+  description  text not null default '',
+  weekday      int  not null check (weekday between 0 and 6),   -- 0 = Sunday … 6 = Saturday
+  start_time   time not null,
+  end_time     time not null,
+  destination  text not null default '',
+  active       boolean not null default true,
+  created_at   timestamptz not null default now()
+);
+
+alter table ride_series enable row level security;
+drop policy if exists "anyone reads weekly rides" on ride_series;
+drop policy if exists "admin edits weekly rides"  on ride_series;
+create policy "anyone reads weekly rides" on ride_series for select using (true);
+create policy "admin edits weekly rides"  on ride_series for all using (is_admin()) with check (is_admin());
+
+alter table events add column if not exists series_id uuid references ride_series (id) on delete set null;
+alter table events add column if not exists cancelled boolean not null default false;
+create unique index if not exists events_series_start_uidx on events (series_id, starts_at);
+
+-- Posts the next few weeks of dates for every active weekly ride. Safe to call any number of times.
+-- A date hidden earlier comes back if it matches the schedule again.
+create or replace function ensure_upcoming_events(p_weeks int default 3) returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  v_today date := (now() at time zone 'America/Los_Angeles')::date;
+  v_added int;
+begin
+  insert into events (category, title, description, starts_at, ends_at, destination, series_id)
+  select s.category, s.title, s.description,
+         (g.day + s.start_time) at time zone 'America/Los_Angeles',
+         (g.day + s.end_time + case when s.end_time <= s.start_time then interval '1 day' else interval '0' end)
+           at time zone 'America/Los_Angeles',
+         s.destination, s.id
+  from ride_series s
+  cross join lateral (
+    select d::date as day
+    from generate_series(v_today, v_today + least(greatest(p_weeks, 1), 8) * 7, interval '1 day') d
+  ) g
+  where s.active
+    and extract(dow from g.day) = s.weekday
+    and (g.day + s.start_time) at time zone 'America/Los_Angeles' > now()
+  on conflict (series_id, starts_at) do update
+    set cancelled = false, title = excluded.title, description = excluded.description,
+        destination = excluded.destination, ends_at = excluded.ends_at, category = excluded.category;
+  get diagnostics v_added = row_count;
+  return v_added;
+end;
+$$;
+
+-- After an admin edits or pauses a weekly ride: hide its future dates that nobody
+-- has signed up for or offered to drive, update the rest, then refill from the schedule.
+create or replace function sync_series(p_series_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  s ride_series;
+begin
+  if not is_admin() then raise exception 'Only admins can change weekly rides.'; end if;
+  select * into s from ride_series where id = p_series_id;
+  if s.id is null then return; end if;
+
+  update events e set cancelled = true
+  where e.series_id = s.id and e.starts_at > now()
+    and not exists (select 1 from ride_requests r where r.event_id = e.id)
+    and not exists (select 1 from ride_offers o where o.event_id = e.id);
+
+  update events e set
+    title = s.title, description = s.description, destination = s.destination, category = s.category
+  where e.series_id = s.id and e.starts_at > now();
+
+  perform ensure_upcoming_events();
+end;
+$$;
+
+grant execute on function ensure_upcoming_events(int) to anon, authenticated;
+grant execute on function sync_series(uuid) to authenticated;
+
+insert into ride_series (category, title, description, weekday, start_time, end_time, destination)
+select * from (values
+  ('church', 'First service',  '', 0, time '08:30', time '10:30', ''),
+  ('church', 'Second service', '', 0, time '10:45', time '12:45', ''),
+  ('cl',     'Friday CL',      '', 5, time '19:00', time '21:00', '')
+) v(category, title, description, weekday, start_time, end_time, destination)
+where not exists (select 1 from ride_series);

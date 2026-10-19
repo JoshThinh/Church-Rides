@@ -15,6 +15,7 @@ import type {
   PublicOffer,
   RideEvent,
   RideRequestInput,
+  RideSeries,
   Session,
 } from '../types';
 import type { RidesApi } from './types';
@@ -33,16 +34,19 @@ interface StoredRequest extends RideRequestInput {
   createdAt: string;
 }
 
+type DemoEvent = RideEvent & { cancelled?: boolean };
+
 interface DemoDb {
   pickupSpots: PickupSpot[];
-  events: RideEvent[];
+  series: RideSeries[];
+  events: DemoEvent[];
   drivers: DriverProfile[];
   offers: StoredOffer[];
   requests: StoredRequest[];
   session: Session;
 }
 
-const DB_KEY = 'lbc-rides:demo-db';
+const DB_KEY = 'lbc-rides:demo-db-v2';
 const id = () => crypto.randomUUID();
 
 /** Next given weekday (0 = Sunday) at hour:minute local time. */
@@ -56,6 +60,37 @@ function next(weekday: number, hour: number, minute = 0, weeksAhead = 0): Date {
 }
 
 const plusHours = (d: Date, h: number) => new Date(d.getTime() + h * 3_600_000);
+const byStart = (a: RideEvent, b: RideEvent) => a.startsAt.localeCompare(b.startsAt);
+
+/** A Date on the same day as `day`, at "HH:MM" local time. */
+function atTime(day: Date, hhmm: string): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(day);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+/** Same job as ensure_upcoming_events() in the database: post the next 3 weeks of weekly rides. */
+function ensureUpcomingDemo(db: { series: RideSeries[]; events: DemoEvent[] }, weeks = 3): void {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (const s of db.series.filter((x) => x.active)) {
+    for (let i = 0; i <= weeks * 7; i++) {
+      const day = new Date(today);
+      day.setDate(today.getDate() + i);
+      if (day.getDay() !== s.weekday) continue;
+      const start = atTime(day, s.startTime);
+      if (start <= new Date()) continue;
+      let end = atTime(day, s.endTime);
+      if (end <= start) end = new Date(end.getTime() + 86_400_000);
+      const startsAt = start.toISOString();
+      const fields = { category: s.category, title: s.title, description: s.description, endsAt: end.toISOString(), destination: s.destination };
+      const existing = db.events.find((e) => e.seriesId === s.id && e.startsAt === startsAt);
+      if (existing) Object.assign(existing, fields, { cancelled: false });
+      else db.events.push({ id: id(), startsAt, seriesId: s.id, ...fields });
+    }
+  }
+}
 
 function seed(): DemoDb {
   const pickupSpots: PickupSpot[] = [
@@ -69,17 +104,21 @@ function seed(): DemoDb {
     'Other / off-campus',
   ].map((name, i) => ({ id: id(), name, sortOrder: i }));
 
-  const church1 = next(0, 10, 0);
-  const church2 = next(0, 10, 0, 1);
-  const cl = next(5, 19, 0);
+  const series: RideSeries[] = [
+    { id: id(), category: 'church', title: 'First service', description: '', weekday: 0, startTime: '08:30', endTime: '10:30', destination: '', active: true },
+    { id: id(), category: 'church', title: 'Second service', description: '', weekday: 0, startTime: '10:45', endTime: '12:45', destination: '', active: true },
+    { id: id(), category: 'cl', title: 'Friday CL', description: '', weekday: 5, startTime: '19:00', endTime: '21:00', destination: '', active: true },
+  ];
   const retreat = next(6, 9, 0, 2);
-
-  const events: RideEvent[] = [
-    { id: id(), category: 'church', title: 'Sunday service', description: 'Main service, lunch after.', startsAt: church1.toISOString(), endsAt: plusHours(church1, 3).toISOString(), destination: 'LBC church building' },
-    { id: id(), category: 'church', title: 'Sunday service', description: 'Main service, lunch after.', startsAt: church2.toISOString(), endsAt: plusHours(church2, 3).toISOString(), destination: 'LBC church building' },
-    { id: id(), category: 'cl', title: 'Friday CL', description: 'Small groups and worship.', startsAt: cl.toISOString(), endsAt: plusHours(cl, 2.5).toISOString(), destination: 'Fellowship hall' },
+  const events: DemoEvent[] = [
     { id: id(), category: 'event', title: 'Fall retreat', description: 'Day trip with the college group. Bring a jacket.', startsAt: retreat.toISOString(), endsAt: plusHours(retreat, 10).toISOString(), destination: 'Camp Cedar Ridge' },
   ];
+  ensureUpcomingDemo({ series, events });
+  events.sort(byStart);
+  const firstService = events.find((e) => e.seriesId === series[0].id)!;
+  const cl = events.find((e) => e.seriesId === series[2].id)!;
+  const church1 = new Date(firstService.startsAt);
+  const clStart = new Date(cl.startsAt);
 
   const drivers: DriverProfile[] = [
     { id: 'demo-driver-maria', name: 'Maria L.', phone: '6195550142', carDescription: 'Silver Honda CR-V', seats: 4 },
@@ -87,17 +126,17 @@ function seed(): DemoDb {
   ];
 
   const offers: StoredOffer[] = [
-    { id: id(), driverId: drivers[0].id, eventId: events[0].id, seats: 4, departTime: plusHours(church1, -0.5).toISOString(), gcJoinLink: 'https://m.me/j/demo-maria' },
-    { id: id(), driverId: drivers[1].id, eventId: events[0].id, seats: 6, departTime: plusHours(church1, -0.6).toISOString(), gcJoinLink: null },
-    { id: id(), driverId: drivers[1].id, eventId: events[2].id, seats: 6, departTime: plusHours(cl, -0.5).toISOString(), gcJoinLink: 'https://m.me/j/demo-daniel' },
+    { id: id(), driverId: drivers[0].id, eventId: firstService.id, seats: 4, departTime: plusHours(church1, -0.5).toISOString(), gcJoinLink: 'https://m.me/j/demo-maria' },
+    { id: id(), driverId: drivers[1].id, eventId: firstService.id, seats: 6, departTime: plusHours(church1, -0.6).toISOString(), gcJoinLink: null },
+    { id: id(), driverId: drivers[1].id, eventId: cl.id, seats: 6, departTime: plusHours(clStart, -0.5).toISOString(), gcJoinLink: 'https://m.me/j/demo-daniel' },
   ];
 
   const requests: StoredRequest[] = [
-    { id: id(), token: id(), eventId: events[0].id, riderName: 'Kevin T.', phone: '6195550111', messenger: 'kevin.t', pickupId: pickupSpots[0].id, notes: '', offerId: null, assignedOfferId: offers[0].id, createdAt: new Date().toISOString() },
-    { id: id(), token: id(), eventId: events[0].id, riderName: 'Grace P.', phone: '6195550122', messenger: '', pickupId: pickupSpots[2].id, notes: 'Might be 5 min late', offerId: null, assignedOfferId: offers[1].id, createdAt: new Date().toISOString() },
+    { id: id(), token: id(), eventId: firstService.id, riderName: 'Kevin T.', phone: '6195550111', messenger: 'kevin.t', pickupId: pickupSpots[0].id, notes: '', offerId: null, assignedOfferId: offers[0].id, createdAt: new Date().toISOString() },
+    { id: id(), token: id(), eventId: firstService.id, riderName: 'Grace P.', phone: '6195550122', messenger: '', pickupId: pickupSpots[2].id, notes: 'Might be 5 min late', offerId: null, assignedOfferId: offers[1].id, createdAt: new Date().toISOString() },
   ];
 
-  return { pickupSpots, events, drivers, offers, requests, session: null };
+  return { pickupSpots, series, events, drivers, offers, requests, session: null };
 }
 
 function load(): DemoDb {
@@ -131,7 +170,6 @@ function update<T>(fn: (db: DemoDb) => T): T {
 const listeners = new Set<(s: Session) => void>();
 const emit = (s: Session) => listeners.forEach((cb) => cb(s));
 
-const byStart = (a: RideEvent, b: RideEvent) => a.startsAt.localeCompare(b.startsAt);
 
 function publicOffers(db: DemoDb, eventId: string): PublicOffer[] {
   return db.offers
@@ -168,9 +206,12 @@ export const demoApi: RidesApi = {
   },
 
   async listUpcomingEvents(category?: Category) {
-    return load()
-      .events.filter((e) => !hasEnded(e) && (!category || e.category === category))
-      .sort(byStart);
+    return update((db) => {
+      ensureUpcomingDemo(db);
+      return db.events
+        .filter((e) => !e.cancelled && new Date(e.startsAt) > new Date() && (!category || e.category === category))
+        .sort(byStart);
+    });
   },
 
   async getEvent(eventId) {
@@ -185,7 +226,7 @@ export const demoApi: RidesApi = {
     await wait();
     return update((db) => {
       const event = db.events.find((e) => e.id === input.eventId);
-      if (!event || new Date(event.startsAt) <= new Date()) throw new Error('Sign-ups for this ride are closed.');
+      if (!event || event.cancelled || new Date(event.startsAt) <= new Date()) throw new Error('Sign-ups for this ride are closed.');
       if (!db.pickupSpots.some((p) => p.id === input.pickupId)) throw new Error('Choose a pickup spot.');
 
       const offers = publicOffers(db, input.eventId);
@@ -350,7 +391,31 @@ export const demoApi: RidesApi = {
   },
 
   async listAllEvents() {
-    return [...load().events].sort(byStart);
+    return update((db) => {
+      ensureUpcomingDemo(db);
+      return db.events.filter((e) => !e.cancelled).sort(byStart);
+    });
+  },
+
+  async listSeries() {
+    return [...load().series].sort((a, b) => a.weekday - b.weekday || a.startTime.localeCompare(b.startTime));
+  },
+
+  async saveSeries(input, seriesId) {
+    await wait();
+    update((db) => {
+      requireRole(db, 'admin');
+      const sid = seriesId ?? id();
+      db.series = seriesId ? db.series.map((x) => (x.id === seriesId ? { ...input, id: sid } : x)) : [...db.series, { ...input, id: sid }];
+      const now = new Date();
+      for (const e of db.events) {
+        if (e.seriesId !== sid || new Date(e.startsAt) <= now) continue;
+        const used = db.requests.some((r) => r.eventId === e.id) || db.offers.some((o) => o.eventId === e.id);
+        if (!used) e.cancelled = true;
+        Object.assign(e, { title: input.title, description: input.description, destination: input.destination, category: input.category });
+      }
+      ensureUpcomingDemo(db);
+    });
   },
 
   async createEvent(e) {

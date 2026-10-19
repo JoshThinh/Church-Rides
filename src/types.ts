@@ -18,7 +18,30 @@ export interface RideEvent {
   startsAt: string;
   endsAt: string;
   destination: string;
+  /** Set when this date was created by a weekly ride (Church, CL). */
+  seriesId?: string | null;
 }
+
+export type WeeklyCategory = 'church' | 'cl';
+
+/** A ride that repeats every week, e.g. "First service, Sundays 8:30–10:30 AM". */
+export interface RideSeries {
+  id: string;
+  category: WeeklyCategory;
+  title: string;
+  description: string;
+  /** 0 = Sunday … 6 = Saturday */
+  weekday: number;
+  /** "HH:MM", 24-hour, San Diego time */
+  startTime: string;
+  endTime: string;
+  destination: string;
+  active: boolean;
+}
+
+export type SeriesInput = Omit<RideSeries, 'id'>;
+
+export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 /** What anyone can see about a driver's offer (no phone, no group chat link). */
 export interface PublicOffer {
