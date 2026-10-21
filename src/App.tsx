@@ -80,7 +80,12 @@ export default function App() {
       </button>
       <RecoveryWatcher route={route} />
       <Header route={route} />
-      {api.mode === 'demo' && (
+      {api.mode === 'demo' && import.meta.env.PROD && (
+        <p className="prod-warning" role="alert">
+          This site isn't connected to the ride database. Sign-ups won't be shared. Tell a ride coordinator.
+        </p>
+      )}
+      {api.mode === 'demo' && !import.meta.env.PROD && (
         <div className="demo-banner" role="note">
           <span>Demo mode: sign-ups are saved only in this browser.</span>
           <button

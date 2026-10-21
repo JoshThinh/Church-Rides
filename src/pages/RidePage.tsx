@@ -6,7 +6,7 @@ import { addRideToken, forgetProfile, loadProfile, saveProfile } from '../lib/st
 import { useAsync, errorMessage } from '../lib/useAsync';
 import { fieldErrors, formatPhone, riderSchema } from '../lib/validation';
 import type { MyRide, PickupSpot, PublicOffer, RideEvent } from '../types';
-import { CATEGORY_LABELS } from '../types';
+import { CATEGORY_LABELS, SIGNUP_CUTOFF_MINUTES, signupsClosed } from '../types';
 import { RideCard } from './MyRides';
 
 export function RidePage({ eventId }: { eventId: string }) {
@@ -35,7 +35,7 @@ export function RidePage({ eventId }: { eventId: string }) {
   }
 
   const e = event.data;
-  const closed = new Date(e.startsAt) <= new Date();
+  const closed = signupsClosed(e);
 
   return (
     <div className={`page cat-${e.category}`}>
@@ -75,7 +75,7 @@ export function RidePage({ eventId }: { eventId: string }) {
             </div>
           ) : closed ? (
             <Empty title="Sign-ups are closed.">
-              <p>This ride has already left. Pick another date.</p>
+              <p>Sign-ups close 1 hour before the ride so drivers can plan their pickups. Pick another date, or message a driver you know.</p>
             </Empty>
           ) : (
             <SignUpForm
@@ -185,6 +185,9 @@ function SignUpForm(props: {
   return (
     <form className="card form" onSubmit={submit} noValidate>
       <h2 className="form__title">Sign up for this ride</h2>
+      <p className="muted small form__note">
+        Sign-ups close at {formatTime(new Date(new Date(event.startsAt).getTime() - SIGNUP_CUTOFF_MINUTES * 60_000).toISOString())}.
+      </p>
 
       {!editing && saved ? (
         <div className="saved">

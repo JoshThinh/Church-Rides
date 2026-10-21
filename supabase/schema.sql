@@ -362,3 +362,111 @@ select * from (values
   ('cl',     'Friday CL',      '', 5, time '19:00', time '21:00', '')
 ) v(category, title, description, weekday, start_time, end_time, destination)
 where not exists (select 1 from ride_series);
+
+-- ============================================================================
+-- Drive every week (added Oct 2026): a driver signs up once for a weekly ride
+-- and is listed on every upcoming date. ensure_upcoming_events() (live
+-- version in Supabase) also inserts these drivers' offers; skipped weeks are
+-- remembered in commitment_skips.
+-- ============================================================================
+
+create table if not exists driver_commitments (
+  id                     uuid primary key default gen_random_uuid(),
+  driver_id              uuid not null references drivers (id) on delete cascade,
+  series_id              uuid not null references ride_series (id) on delete cascade,
+  seats                  int  not null check (seats between 1 and 12),
+  depart_offset_minutes  int  not null default 30 check (depart_offset_minutes between 0 and 180),
+  gc_join_link           text check (gc_join_link is null or gc_join_link ~* '^https://(www\.)?(m\.me|messenger\.com|facebook\.com/messages)/'),
+  active                 boolean not null default true,
+  created_at             timestamptz not null default now(),
+  unique (driver_id, series_id)
+);
+alter table driver_commitments enable row level security;
+drop policy if exists "driver manages own weekly drives" on driver_commitments;
+drop policy if exists "admin reads weekly drives" on driver_commitments;
+create policy "driver manages own weekly drives" on driver_commitments for all
+  using (driver_id = auth.uid()) with check (driver_id = auth.uid());
+create policy "admin reads weekly drives" on driver_commitments for select using (is_admin());
+
+create table if not exists commitment_skips (
+  commitment_id  uuid not null references driver_commitments (id) on delete cascade,
+  event_id       uuid not null references events (id) on delete cascade,
+  primary key (commitment_id, event_id)
+);
+alter table commitment_skips enable row level security;
+drop policy if exists "driver manages own skips" on commitment_skips;
+create policy "driver manages own skips" on commitment_skips for all
+  using (exists (select 1 from driver_commitments c where c.id = commitment_id and c.driver_id = auth.uid()))
+  with check (exists (select 1 from driver_commitments c where c.id = commitment_id and c.driver_id = auth.uid()));
+
+alter table ride_offers add column if not exists commitment_id uuid references driver_commitments (id) on delete set null;
+
+-- Add to the end of ensure_upcoming_events(), before "return v_added;":
+--   insert into ride_offers (event_id, driver_id, seats, depart_time, gc_join_link, commitment_id)
+--   select e.id, c.driver_id, c.seats, e.starts_at - make_interval(mins => c.depart_offset_minutes), c.gc_join_link, c.id
+--   from driver_commitments c
+--   join events e on e.series_id = c.series_id
+--   where c.active and not e.cancelled and e.starts_at > now()
+--     and not exists (select 1 from commitment_skips k where k.commitment_id = c.id and k.event_id = e.id)
+--   on conflict (event_id, driver_id) do nothing;
+
+-- ============================================================================
+-- Safety fixes (Oct 2026)
+--  * Drivers need admin approval before riders can see them (drivers.approved).
+--  * Waiting riders are matched automatically when a seat opens (fill_waiting_riders + triggers).
+--  * A car can't drop below the riders already in it (offer_seats_guard).
+--  * One sign-up per phone per ride (ride_requests_event_phone_uidx).
+--  * Sign-ups close 60 minutes before the start (request_ride).
+-- The live versions of event_offers() and request_ride() also require d.approved.
+-- ============================================================================
+
+alter table drivers add column if not exists approved boolean not null default false;
+create unique index if not exists ride_requests_event_phone_uidx on ride_requests (event_id, phone);
+
+create or replace function trg_driver_approval_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_admin() then
+    if tg_op = 'INSERT' then new.approved := false; else new.approved := old.approved; end if;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists driver_approval_guard on drivers;
+create trigger driver_approval_guard before insert or update on drivers
+  for each row execute function trg_driver_approval_guard();
+drop policy if exists "admin approves drivers" on drivers;
+create policy "admin approves drivers" on drivers for update using (is_admin()) with check (is_admin());
+
+create or replace function fill_waiting_riders(p_event_id uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  r record;
+  v_offer uuid;
+  v_count int := 0;
+begin
+  if not exists (select 1 from events where id = p_event_id and not cancelled and starts_at > now()) then
+    return 0;
+  end if;
+  for r in select id, pickup_id from ride_requests where event_id = p_event_id and assigned_offer_id is null order by created_at loop
+    v_offer := null;
+    select o.id into v_offer
+    from ride_offers o
+    join drivers d on d.id = o.driver_id and d.approved
+    left join ride_requests q on q.assigned_offer_id = o.id
+    where o.event_id = p_event_id
+    group by o.id
+    having count(q.id) < o.seats
+    order by bool_or(q.pickup_id = r.pickup_id) desc nulls last, o.seats - count(q.id) desc, o.depart_time
+    limit 1;
+    exit when v_offer is null;
+    update ride_requests set assigned_offer_id = v_offer where id = r.id;
+    v_count := v_count + 1;
+  end loop;
+  return v_count;
+end;
+$$;
+revoke execute on function fill_waiting_riders(uuid) from public, anon, authenticated;
+
+-- Triggers that call it: zz_fill_after_offer_change (ride_offers insert / seats update / delete)
+-- and zz_fill_after_driver_approved (drivers.approved changes). See the live database for their bodies.

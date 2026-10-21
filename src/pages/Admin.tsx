@@ -4,10 +4,10 @@ import { DEMO_ADMIN } from '../api/demo';
 import { DateBlock, Empty, ErrorNote, Field, Loading, PageTitle } from '../components/ui';
 import { formatClock, formatRange, fromLocalInput, hasEnded, toLocalInput } from '../lib/format';
 import { errorMessage, useAsync } from '../lib/useAsync';
-import { eventSchema, fieldErrors, seriesSchema } from '../lib/validation';
+import { eventSchema, fieldErrors, formatPhone, seriesSchema } from '../lib/validation';
 import { setKeepSignedIn } from '../lib/storage';
 import { useSession, useSessionReady } from '../session';
-import type { Category, PickupSpot, RideEvent, RideSeries, WeeklyCategory } from '../types';
+import type { AdminDriver, Category, PickupSpot, RideEvent, RideSeries, WeeklyCategory } from '../types';
 import { CATEGORY_LABELS, WEEKDAYS } from '../types';
 
 export function Admin() {
@@ -90,6 +90,7 @@ function AdminHome() {
       </PageTitle>
       <div className="admin-layout">
         <section>
+          <DriverApprovals />
           <WeeklyRides onChanged={events.reload} />
 
           <div className="section-bar">
@@ -587,5 +588,74 @@ function ResetDriverPassword() {
         {busy ? 'Saving…' : 'Set new password'}
       </button>
     </form>
+  );
+}
+
+/** New drivers wait here until a coordinator approves them. Riders only see approved drivers. */
+function DriverApprovals() {
+  const drivers = useAsync(() => api.adminListDrivers(), []);
+  const [error, setError] = useState<string | null>(null);
+  const [showApproved, setShowApproved] = useState(false);
+
+  async function setApproved(d: AdminDriver, approved: boolean) {
+    setError(null);
+    try {
+      await api.setDriverApproved(d.id, approved);
+      drivers.reload();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  const pending = (drivers.data ?? []).filter((d) => !d.approved);
+  const approved = (drivers.data ?? []).filter((d) => d.approved);
+
+  return (
+    <section className="approvals" aria-labelledby="approvals-heading">
+      <div className="section-bar">
+        <h2 id="approvals-heading" className="section-heading">
+          Drivers
+        </h2>
+        {approved.length > 0 && (
+          <button className="link-button" onClick={() => setShowApproved((v) => !v)}>
+            {showApproved ? 'Hide approved' : `Show approved (${approved.length})`}
+          </button>
+        )}
+      </div>
+      <p className="muted small approvals__note">
+        New drivers can't be seen by riders until you approve them. Only approve people you know from church.
+      </p>
+      {drivers.loading && <Loading />}
+      {drivers.error && <ErrorNote message={drivers.error} />}
+      {drivers.data && pending.length === 0 && <p className="muted">No drivers waiting for approval.</p>}
+      <ul className="approvals__list">
+        {[...pending, ...(showApproved ? approved : [])].map((d) => (
+          <li key={d.id} className={`approval${d.approved ? '' : ' is-pending'}`}>
+            <span className="approval__body">
+              <span className="approval__name">
+                {d.name}
+                {!d.approved && <span className="tag">Waiting</span>}
+              </span>
+              <span className="approval__meta">
+                {d.carDescription}, {d.seats} seats
+              </span>
+              <span className="approval__meta">
+                {d.email}, {formatPhone(d.phone)}
+              </span>
+            </span>
+            {d.approved ? (
+              <button className="link-button link-button--danger" onClick={() => void setApproved(d, false)}>
+                Remove approval
+              </button>
+            ) : (
+              <button className="btn btn--primary btn--small" onClick={() => void setApproved(d, true)}>
+                Approve
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {error && <ErrorNote message={error} />}
+    </section>
   );
 }

@@ -5,6 +5,7 @@
 import { pickOffer } from '../lib/assign';
 import { hasEnded } from '../lib/format';
 import type {
+  AdminDriver,
   Category,
   DriverOffer,
   DriverProfile,
@@ -17,13 +18,20 @@ import type {
   RideRequestInput,
   RideSeries,
   Session,
+  WeeklyDrive,
 } from '../types';
+import { signupsClosed } from '../types';
 import type { RidesApi } from './types';
 
 export const DEMO_ADMIN = { username: 'admin', password: 'demo1234' };
 
 interface StoredOffer extends NewOffer {
   id: string;
+  driverId: string;
+  commitmentId?: string | null;
+}
+
+interface StoredCommitment extends WeeklyDrive {
   driverId: string;
 }
 
@@ -44,6 +52,8 @@ interface DemoDb {
   offers: StoredOffer[];
   requests: StoredRequest[];
   session: Session;
+  commitments?: StoredCommitment[];
+  skips?: { commitmentId: string; eventId: string }[];
   /** Demo only: driver passwords in plain text. The real site never stores passwords like this. */
   passwords?: Record<string, string>;
 }
@@ -73,7 +83,10 @@ function atTime(day: Date, hhmm: string): Date {
 }
 
 /** Same job as ensure_upcoming_events() in the database: post the next 3 weeks of weekly rides. */
-function ensureUpcomingDemo(db: { series: RideSeries[]; events: DemoEvent[] }, weeks = 3): void {
+function ensureUpcomingDemo(
+  db: { series: RideSeries[]; events: DemoEvent[]; offers?: StoredOffer[]; commitments?: StoredCommitment[]; skips?: { commitmentId: string; eventId: string }[] },
+  weeks = 3,
+): void {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   for (const s of db.series.filter((x) => x.active)) {
@@ -90,6 +103,25 @@ function ensureUpcomingDemo(db: { series: RideSeries[]; events: DemoEvent[] }, w
       const existing = db.events.find((e) => e.seriesId === s.id && e.startsAt === startsAt);
       if (existing) Object.assign(existing, fields, { cancelled: false });
       else db.events.push({ id: id(), startsAt, seriesId: s.id, ...fields });
+    }
+  }
+
+  // Weekly drivers: list them on every upcoming date they haven't skipped.
+  if (!db.offers) return;
+  for (const c of (db.commitments ?? []).filter((x) => x.active)) {
+    for (const e of db.events) {
+      if (e.seriesId !== c.seriesId || e.cancelled || new Date(e.startsAt) <= new Date()) continue;
+      if (db.skips?.some((k) => k.commitmentId === c.id && k.eventId === e.id)) continue;
+      if (db.offers.some((o) => o.eventId === e.id && o.driverId === c.driverId)) continue;
+      db.offers.push({
+        id: id(),
+        eventId: e.id,
+        driverId: c.driverId,
+        seats: c.seats,
+        departTime: new Date(new Date(e.startsAt).getTime() - c.departOffsetMinutes * 60_000).toISOString(),
+        gcJoinLink: c.gcJoinLink,
+        commitmentId: c.id,
+      });
     }
   }
 }
@@ -123,8 +155,8 @@ function seed(): DemoDb {
   const clStart = new Date(cl.startsAt);
 
   const drivers: DriverProfile[] = [
-    { id: 'demo-driver-maria', name: 'Maria L.', phone: '6195550142', carDescription: 'Silver Honda CR-V', seats: 4 },
-    { id: 'demo-driver-daniel', name: 'Daniel K.', phone: '8585550199', carDescription: 'Blue Toyota Sienna', seats: 6 },
+    { id: 'demo-driver-maria', name: 'Maria L.', phone: '6195550142', carDescription: 'Silver Honda CR-V', seats: 4, approved: true },
+    { id: 'demo-driver-daniel', name: 'Daniel K.', phone: '8585550199', carDescription: 'Blue Toyota Sienna', seats: 6, approved: true },
   ];
 
   const offers: StoredOffer[] = [
@@ -175,7 +207,7 @@ const emit = (s: Session) => listeners.forEach((cb) => cb(s));
 
 function publicOffers(db: DemoDb, eventId: string): PublicOffer[] {
   return db.offers
-    .filter((o) => o.eventId === eventId)
+    .filter((o) => o.eventId === eventId && db.drivers.find((d) => d.id === o.driverId)?.approved)
     .map((o) => {
       const driver = db.drivers.find((d) => d.id === o.driverId);
       const riders = db.requests.filter((r) => r.assignedOfferId === o.id);
@@ -191,6 +223,18 @@ function publicOffers(db: DemoDb, eventId: string): PublicOffer[] {
       };
     })
     .sort((a, b) => a.departTime.localeCompare(b.departTime));
+}
+
+/** Same job as fill_waiting_riders() in the database: give waiting riders a seat. */
+function fillWaiting(db: DemoDb): void {
+  for (const e of db.events) {
+    if (e.cancelled || new Date(e.startsAt) <= new Date()) continue;
+    for (const r of db.requests.filter((x) => x.eventId === e.id && !x.assignedOfferId)) {
+      const offerId = pickOffer(publicOffers(db, e.id), r.pickupId);
+      if (!offerId) break;
+      r.assignedOfferId = offerId;
+    }
+  }
 }
 
 function requireRole(db: DemoDb, role: 'driver' | 'admin') {
@@ -228,7 +272,10 @@ export const demoApi: RidesApi = {
     await wait();
     return update((db) => {
       const event = db.events.find((e) => e.id === input.eventId);
-      if (!event || event.cancelled || new Date(event.startsAt) <= new Date()) throw new Error('Sign-ups for this ride are closed.');
+      if (!event || event.cancelled || signupsClosed(event)) throw new Error('Sign-ups for this ride are closed. They close 1 hour before it starts.');
+      if (db.requests.some((r) => r.eventId === input.eventId && r.phone === input.phone)) {
+        throw new Error('This phone number is already signed up for this ride. Check My rides.');
+      }
       if (!db.pickupSpots.some((p) => p.id === input.pickupId)) throw new Error('Choose a pickup spot.');
 
       const offers = publicOffers(db, input.eventId);
@@ -351,25 +398,30 @@ export const demoApi: RidesApi = {
   async saveDriverProfile(p) {
     update((db) => {
       const s = requireRole(db, 'driver');
+      const existing = db.drivers.find((d) => d.id === s.userId);
       const rest = db.drivers.filter((d) => d.id !== s.userId);
-      db.drivers = [...rest, { ...p, id: s.userId }];
+      db.drivers = [...rest, { ...p, id: s.userId, approved: existing?.approved ?? false }];
     });
   },
 
   async listMyOffers() {
-    const db = load();
+    const db = update((d) => {
+      ensureUpcomingDemo(d);
+      return d;
+    });
     const s = db.session;
     if (!s || s.role !== 'driver') return [];
     const result: DriverOffer[] = [];
     for (const o of db.offers.filter((x) => x.driverId === s.userId)) {
       const event = db.events.find((e) => e.id === o.eventId);
-      if (!event || hasEnded(event)) continue;
+      if (!event || hasEnded(event) || event.cancelled) continue;
       result.push({
         id: o.id,
         event,
         seats: o.seats,
         departTime: o.departTime,
         gcJoinLink: o.gcJoinLink,
+        commitmentId: o.commitmentId ?? null,
         riders: db.requests
           .filter((r) => r.assignedOfferId === o.id)
           .map((r) => ({
@@ -394,6 +446,7 @@ export const demoApi: RidesApi = {
         throw new Error('You are already driving for this ride.');
       }
       db.offers.push({ ...o, id: id(), driverId: s.userId });
+      fillWaiting(db);
     });
   },
 
@@ -408,11 +461,67 @@ export const demoApi: RidesApi = {
   async deleteOffer(offerId) {
     update((db) => {
       const s = requireRole(db, 'driver');
+      const offer = db.offers.find((o) => o.id === offerId && o.driverId === s.userId);
+      if (offer?.commitmentId) db.skips = [...(db.skips ?? []), { commitmentId: offer.commitmentId, eventId: offer.eventId }];
       db.offers = db.offers.filter((o) => !(o.id === offerId && o.driverId === s.userId));
       // Riders in that car go back to "waiting for a driver".
       db.requests.forEach((r) => {
         if (r.assignedOfferId === offerId) r.assignedOfferId = null;
       });
+      fillWaiting(db);
+    });
+  },
+
+  async listMyWeeklyDrives() {
+    const db = load();
+    const s = db.session;
+    if (!s || s.role !== 'driver') return [];
+    return (db.commitments ?? []).filter((c) => c.driverId === s.userId);
+  },
+
+  async saveWeeklyDrive(input) {
+    await wait();
+    update((db) => {
+      const s = requireRole(db, 'driver');
+      db.commitments = db.commitments ?? [];
+      let c = db.commitments.find((x) => x.driverId === s.userId && x.seriesId === input.seriesId);
+      if (c) Object.assign(c, input, { active: true });
+      else {
+        c = { ...input, id: id(), driverId: s.userId, active: true };
+        db.commitments.push(c);
+      }
+      const commitmentId = c.id;
+      // Update dates already posted for this weekly drive.
+      for (const o of db.offers.filter((x) => x.commitmentId === commitmentId)) {
+        const e = db.events.find((x) => x.id === o.eventId);
+        if (!e || new Date(e.startsAt) <= new Date()) continue;
+        o.seats = Math.max(input.seats, db.requests.filter((r) => r.assignedOfferId === o.id).length);
+        o.gcJoinLink = input.gcJoinLink;
+        o.departTime = new Date(new Date(e.startsAt).getTime() - input.departOffsetMinutes * 60_000).toISOString();
+      }
+      ensureUpcomingDemo(db);
+      fillWaiting(db);
+    });
+  },
+
+  async stopWeeklyDrive(commitmentId) {
+    return update((db) => {
+      const s = requireRole(db, 'driver');
+      const c = (db.commitments ?? []).find((x) => x.id === commitmentId && x.driverId === s.userId);
+      if (!c) return 0;
+      c.active = false;
+      let kept = 0;
+      db.offers = db.offers.filter((o) => {
+        if (o.commitmentId !== commitmentId) return true;
+        const e = db.events.find((x) => x.id === o.eventId);
+        if (!e || new Date(e.startsAt) <= new Date()) return true;
+        if (db.requests.some((r) => r.assignedOfferId === o.id)) {
+          kept++;
+          return true;
+        }
+        return false;
+      });
+      return kept;
     });
   },
 
@@ -436,7 +545,7 @@ export const demoApi: RidesApi = {
       const now = new Date();
       for (const e of db.events) {
         if (e.seriesId !== sid || new Date(e.startsAt) <= now) continue;
-        const used = db.requests.some((r) => r.eventId === e.id) || db.offers.some((o) => o.eventId === e.id);
+        const used = db.requests.some((r) => r.eventId === e.id) || db.offers.some((o) => o.eventId === e.id && !o.commitmentId);
         if (!used) e.cancelled = true;
         Object.assign(e, { title: input.title, description: input.description, destination: input.destination, category: input.category });
       }
@@ -467,6 +576,42 @@ export const demoApi: RidesApi = {
       const gone = new Set(db.offers.filter((o) => o.eventId === eventId).map((o) => o.id));
       db.offers = db.offers.filter((o) => !gone.has(o.id));
       db.requests = db.requests.filter((r) => r.eventId !== eventId);
+    });
+  },
+
+  async adminListDrivers() {
+    const db = load();
+    if (db.session?.role !== 'admin') throw new Error('Sign in as admin first.');
+    return db.drivers
+      .map(
+        (d): AdminDriver => ({
+          id: d.id,
+          name: d.name,
+          email: d.id.startsWith('demo:') ? d.id.slice(5) : `${d.name.split(' ')[0].toLowerCase()}@example.com`,
+          phone: d.phone,
+          carDescription: d.carDescription,
+          seats: d.seats,
+          approved: d.approved,
+          createdAt: new Date().toISOString(),
+        }),
+      )
+      .sort((a, b) => Number(a.approved) - Number(b.approved));
+  },
+
+  async setDriverApproved(driverId, approved) {
+    update((db) => {
+      requireRole(db, 'admin');
+      const d = db.drivers.find((x) => x.id === driverId);
+      if (!d) return;
+      d.approved = approved;
+      if (!approved) {
+        // Their riders on upcoming dates go back to waiting and get re-matched.
+        const theirOffers = new Set(db.offers.filter((o) => o.driverId === driverId).map((o) => o.id));
+        db.requests.forEach((r) => {
+          if (r.assignedOfferId && theirOffers.has(r.assignedOfferId)) r.assignedOfferId = null;
+        });
+      }
+      fillWaiting(db);
     });
   },
 

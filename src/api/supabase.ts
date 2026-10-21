@@ -4,7 +4,7 @@
 // Security lives in the database (see supabase/schema.sql), not here.
 
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
-import type { DriverOffer, EventInput, PickupSpot, PublicOffer, RideEvent, RideSeries, SeriesInput, Session } from '../types';
+import type { AdminDriver, DriverOffer, EventInput, PickupSpot, PublicOffer, RideEvent, RideSeries, SeriesInput, Session, WeeklyDrive } from '../types';
 import { markNeedsNewPassword, markResetRequested } from '../lib/storage';
 import type { RidesApi } from './types';
 
@@ -67,8 +67,8 @@ const fromSeries = (s: SeriesInput) => ({
  * Runs at most once an hour per open page; it's safe to run any number of times.
  */
 let lastEnsured = 0;
-async function ensureUpcoming(): Promise<void> {
-  if (Date.now() - lastEnsured < 60 * 60 * 1000) return;
+async function ensureUpcoming(force = false): Promise<void> {
+  if (!force && Date.now() - lastEnsured < 60 * 60 * 1000) return;
   lastEnsured = Date.now();
   await supabase.rpc('ensure_upcoming_events');
 }
@@ -246,7 +246,9 @@ export const supabaseApi: RidesApi = {
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) return null;
     const row = check(await supabase.from('drivers').select('*').eq('id', auth.user.id).maybeSingle());
-    return row ? { id: row.id, name: row.name, phone: row.phone, carDescription: row.car_description, seats: row.seats } : null;
+    return row
+      ? { id: row.id, name: row.name, phone: row.phone, carDescription: row.car_description, seats: row.seats, approved: !!row.approved }
+      : null;
   },
 
   async saveDriverProfile(p) {
@@ -258,12 +260,13 @@ export const supabaseApi: RidesApi = {
 
   async listMyOffers() {
     const id = await currentUserId();
+    await ensureUpcoming();
     const rows = (check(
       await supabase
         .from('ride_offers')
         .select(
           // The !constraint_name hints tell Supabase which link between tables to follow.
-          'id, seats, depart_time, gc_join_link, event:events!ride_offers_event_id_fkey(*), riders:ride_requests!ride_requests_assigned_offer_id_fkey(id, rider_name, phone, messenger, notes, pickup_id, pickup:pickup_locations(name))',
+          'id, seats, depart_time, gc_join_link, commitment_id, event:events!ride_offers_event_id_fkey(*), riders:ride_requests!ride_requests_assigned_offer_id_fkey(id, rider_name, phone, messenger, notes, pickup_id, pickup:pickup_locations(name))',
         )
         .eq('driver_id', id),
     ) ?? []) as Row[];
@@ -276,6 +279,7 @@ export const supabaseApi: RidesApi = {
           seats: r.seats,
           departTime: r.depart_time,
           gcJoinLink: r.gc_join_link,
+          commitmentId: r.commitment_id ?? null,
           riders: (r.riders ?? []).map((x: Row) => ({
             requestId: x.id,
             riderName: x.rider_name,
@@ -287,7 +291,7 @@ export const supabaseApi: RidesApi = {
           })),
         }),
       )
-      .filter((o) => new Date(o.event.endsAt) > now)
+      .filter((o, i) => new Date(o.event.endsAt) > now && !rows[i].event?.cancelled)
       .sort((a, b) => a.event.startsAt.localeCompare(b.event.startsAt));
   },
 
@@ -309,7 +313,97 @@ export const supabaseApi: RidesApi = {
   },
 
   async deleteOffer(offerId) {
+    const offer = check(await supabase.from('ride_offers').select('event_id, commitment_id').eq('id', offerId).maybeSingle()) as Row | null;
+    if (offer?.commitment_id) {
+      // Remember the skip so the weekly drive doesn't add this date back.
+      check(
+        await supabase
+          .from('commitment_skips')
+          .upsert({ commitment_id: offer.commitment_id, event_id: offer.event_id }, { onConflict: 'commitment_id,event_id', ignoreDuplicates: true }),
+      );
+    }
     check(await supabase.from('ride_offers').delete().eq('id', offerId));
+  },
+
+  async listMyWeeklyDrives() {
+    const id = await currentUserId();
+    const rows = (check(await supabase.from('driver_commitments').select('*').eq('driver_id', id)) ?? []) as Row[];
+    return rows.map(
+      (r): WeeklyDrive => ({
+        id: r.id,
+        seriesId: r.series_id,
+        seats: r.seats,
+        departOffsetMinutes: r.depart_offset_minutes,
+        gcJoinLink: r.gc_join_link,
+        active: r.active,
+      }),
+    );
+  },
+
+  async saveWeeklyDrive(input) {
+    const driverId = await currentUserId();
+    const row = check(
+      await supabase
+        .from('driver_commitments')
+        .upsert(
+          {
+            driver_id: driverId,
+            series_id: input.seriesId,
+            seats: input.seats,
+            depart_offset_minutes: input.departOffsetMinutes,
+            gc_join_link: input.gcJoinLink,
+            active: true,
+          },
+          { onConflict: 'driver_id,series_id' },
+        )
+        .select('id')
+        .single(),
+    ) as Row;
+
+    // Update dates already posted for this weekly drive (seats, leave time, group chat link).
+    const offers = (check(
+      await supabase
+        .from('ride_offers')
+        .select('id, event:events!ride_offers_event_id_fkey(starts_at), riders:ride_requests!ride_requests_assigned_offer_id_fkey(id)')
+        .eq('commitment_id', row.id),
+    ) ?? []) as Row[];
+    for (const o of offers) {
+      const start = new Date(o.event.starts_at);
+      if (start <= new Date()) continue;
+      check(
+        await supabase
+          .from('ride_offers')
+          .update({
+            // Never drop below the riders already in that car.
+            seats: Math.max(input.seats, (o.riders ?? []).length),
+            gc_join_link: input.gcJoinLink,
+            depart_time: new Date(start.getTime() - input.departOffsetMinutes * 60_000).toISOString(),
+          })
+          .eq('id', o.id),
+      );
+    }
+    await ensureUpcoming(true);
+  },
+
+  async stopWeeklyDrive(commitmentId) {
+    check(await supabase.from('driver_commitments').update({ active: false }).eq('id', commitmentId));
+    // Remove upcoming dates nobody has signed up for; keep the ones with riders.
+    const offers = (check(
+      await supabase
+        .from('ride_offers')
+        .select('id, event:events!ride_offers_event_id_fkey(starts_at), riders:ride_requests!ride_requests_assigned_offer_id_fkey(id)')
+        .eq('commitment_id', commitmentId),
+    ) ?? []) as Row[];
+    let kept = 0;
+    for (const o of offers) {
+      if (new Date(o.event.starts_at) <= new Date()) continue;
+      if ((o.riders ?? []).length > 0) {
+        kept++;
+        continue;
+      }
+      check(await supabase.from('ride_offers').delete().eq('id', o.id));
+    }
+    return kept;
   },
 
   async listAllEvents() {
@@ -343,6 +437,26 @@ export const supabaseApi: RidesApi = {
 
   async deleteEvent(id) {
     check(await supabase.from('events').delete().eq('id', id));
+  },
+
+  async adminListDrivers() {
+    const rows = (check(await supabase.rpc('admin_list_drivers')) ?? []) as Row[];
+    return rows.map(
+      (r): AdminDriver => ({
+        id: r.id,
+        name: r.name,
+        email: r.email ?? '',
+        phone: r.phone,
+        carDescription: r.car_description,
+        seats: r.seats,
+        approved: r.approved,
+        createdAt: r.created_at,
+      }),
+    );
+  },
+
+  async setDriverApproved(driverId, approved) {
+    check(await supabase.from('drivers').update({ approved }).eq('id', driverId));
   },
 
   async resetDriverPassword(email, newPassword) {

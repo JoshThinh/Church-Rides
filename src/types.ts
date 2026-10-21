@@ -94,6 +94,27 @@ export interface DriverProfile {
   phone: string;
   carDescription: string;
   seats: number;
+  /** New drivers are hidden from riders until an admin approves them. */
+  approved: boolean;
+}
+
+/** What the admin sees in the driver approval list. */
+export interface AdminDriver {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  carDescription: string;
+  seats: number;
+  approved: boolean;
+  createdAt: string;
+}
+
+/** Sign-ups close this many minutes before a ride starts. Must match request_ride() in the database. */
+export const SIGNUP_CUTOFF_MINUTES = 60;
+
+export function signupsClosed(event: { startsAt: string }, now = new Date()): boolean {
+  return new Date(event.startsAt).getTime() - SIGNUP_CUTOFF_MINUTES * 60_000 <= now.getTime();
 }
 
 export interface DriverRider {
@@ -113,7 +134,22 @@ export interface DriverOffer {
   departTime: string;
   gcJoinLink: string | null;
   riders: DriverRider[];
+  /** Set when this ride came from the driver's "Drive every week" signup. */
+  commitmentId: string | null;
 }
+
+/** A driver's "Drive every week" signup for one weekly ride. */
+export interface WeeklyDrive {
+  id: string;
+  seriesId: string;
+  seats: number;
+  /** Leave SDSU this many minutes before the start time. */
+  departOffsetMinutes: number;
+  gcJoinLink: string | null;
+  active: boolean;
+}
+
+export type WeeklyDriveInput = Omit<WeeklyDrive, 'id' | 'active'>;
 
 export interface NewOffer {
   eventId: string;

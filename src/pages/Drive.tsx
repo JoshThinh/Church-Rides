@@ -2,13 +2,13 @@ import { useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { DateBlock, Empty, ErrorNote, Field, Loading, PageTitle } from '../components/ui';
 import { groupByStop } from '../lib/assign';
-import { formatDay, formatRange, formatTime, fromLocalInput, toLocalInput } from '../lib/format';
+import { formatClock, formatDay, formatRange, formatTime, fromLocalInput, toLocalInput } from '../lib/format';
 import { errorMessage, useAsync } from '../lib/useAsync';
 import { driverProfileSchema, fieldErrors, formatPhone, isMessengerLink, offerSchema } from '../lib/validation';
 import { clearPasswordReset, loadLastEmail, saveLastEmail, setKeepSignedIn } from '../lib/storage';
 import { useSession, useSessionReady } from '../session';
-import type { DriverOffer, DriverProfile, PickupSpot, RideEvent } from '../types';
-import { CATEGORY_LABELS } from '../types';
+import type { DriverOffer, DriverProfile, PickupSpot, RideEvent, RideSeries, WeeklyDrive } from '../types';
+import { CATEGORY_LABELS, WEEKDAYS } from '../types';
 
 export function Drive() {
   const session = useSession();
@@ -234,13 +234,20 @@ function DriverHome() {
         Your rides
       </PageTitle>
 
+      {!p.approved && (
+        <p className="note note--pending" role="status">
+          <strong>Waiting for approval.</strong> A ride coordinator needs to approve you before riders can see your rides. You can set up
+          your rides now, and they'll show up for riders once you're approved.
+        </p>
+      )}
+
       <div className="drive-layout">
         <section aria-label="Rides you're driving">
           {offers.loading && <Loading label="Loading your rides" />}
           {offers.error && <ErrorNote message={offers.error} />}
           {offers.data && offers.data.length === 0 && (
             <Empty title="You're not driving for anything yet.">
-              <p>Offer a ride and riders will show up here as they sign up.</p>
+              <p>Choose "Drive every week" for Sunday services or College Life, or offer a single ride. Riders show up here as they sign up.</p>
             </Empty>
           )}
           <ul className="stack">
@@ -252,7 +259,8 @@ function DriverHome() {
           </ul>
         </section>
 
-        <aside>
+        <aside className="stack">
+          <WeeklyDrives profile={p} onChanged={offers.reload} />
           <OfferForm events={openEvents} profile={p} onCreated={offers.reload} />
         </aside>
       </div>
@@ -453,7 +461,10 @@ function OfferCard({ offer, spots, onChanged }: { offer: DriverOffer; spots: Pic
       <header className="offer-card__head">
         <DateBlock iso={offer.event.startsAt} category={offer.event.category} />
         <div>
-          <h3 className="ride-card__title">{offer.event.title}</h3>
+          <h3 className="ride-card__title">
+            {offer.event.title}
+            {offer.commitmentId && <span className="tag">Every week</span>}
+          </h3>
           <p className="ride-card__meta">{formatRange(offer.event.startsAt, offer.event.endsAt)}</p>
           <p className="ride-card__meta">
             You leave at {formatTime(offer.departTime)}. {offer.riders.length} of {offer.seats} seats taken
@@ -528,7 +539,12 @@ function OfferCard({ offer, spots, onChanged }: { offer: DriverOffer; spots: Pic
         )}
         {confirmRemove ? (
           <span className="ride-card__confirm">
-            <span>Stop driving? Your riders go back to waiting.</span>
+            <span>
+              {offer.commitmentId
+                ? "Skip this week? You'll still drive the other weeks."
+                : 'Stop driving? Your riders go back to waiting.'}
+              {offer.riders.length > 0 && ' Riders in your car go back to waiting for a driver.'}
+            </span>
             <button
               className="btn btn--danger btn--small"
               onClick={async () => {
@@ -536,7 +552,7 @@ function OfferCard({ offer, spots, onChanged }: { offer: DriverOffer; spots: Pic
                 onChanged();
               }}
             >
-              Yes, stop driving
+              {offer.commitmentId ? 'Yes, skip this week' : 'Yes, stop driving'}
             </button>
             <button className="btn btn--ghost btn--small" onClick={() => setConfirmRemove(false)}>
               Keep driving
@@ -544,10 +560,204 @@ function OfferCard({ offer, spots, onChanged }: { offer: DriverOffer; spots: Pic
           </span>
         ) : (
           <button className="link-button" onClick={() => setConfirmRemove(true)}>
-            Stop driving for this ride
+            {offer.commitmentId ? 'Skip this week' : 'Stop driving for this ride'}
           </button>
         )}
       </div>
     </article>
+  );
+}
+
+const LEAVE_OPTIONS = [15, 20, 30, 45, 60];
+
+/** "Drive every week": sign up once for Sunday services or College Life. */
+function WeeklyDrives({ profile, onChanged }: { profile: DriverProfile; onChanged: () => void }) {
+  const series = useAsync(() => api.listSeries(), []);
+  const drives = useAsync(() => api.listMyWeeklyDrives(), []);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [stopping, setStopping] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const active = (series.data ?? []).filter((s) => s.active);
+  const driveFor = (s: RideSeries) => (drives.data ?? []).find((d) => d.seriesId === s.id && d.active);
+
+  const refresh = () => {
+    drives.reload();
+    onChanged();
+  };
+
+  async function stop(d: WeeklyDrive, s: RideSeries) {
+    setError(null);
+    try {
+      const kept = await api.stopWeeklyDrive(d.id);
+      setMessage(
+        kept > 0
+          ? `Stopped driving every week for ${s.title}. You're still listed on ${kept} upcoming ${kept === 1 ? 'date' : 'dates'} where riders already signed up. Skip ${kept === 1 ? 'it' : 'them'} below if you can't make it.`
+          : `Stopped driving every week for ${s.title}.`,
+      );
+      setStopping(null);
+      refresh();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  return (
+    <section className="card form" aria-labelledby="weekly-drive-heading">
+      <h2 id="weekly-drive-heading" className="form__title">
+        Drive every week
+      </h2>
+      <p className="muted small">Sign up once and you're listed as a driver every week. You can skip a single week anytime.</p>
+      {(series.loading || drives.loading) && <Loading />}
+      {active.length === 0 && !series.loading && <p className="muted">No weekly rides are set up yet.</p>}
+      <ul className="weekly-drives">
+        {active.map((s) => {
+          const d = driveFor(s);
+          if (editing === s.id) {
+            return (
+              <li key={s.id}>
+                <WeeklyDriveForm
+                  series={s}
+                  initial={d ?? null}
+                  profile={profile}
+                  onCancel={() => setEditing(null)}
+                  onSaved={() => {
+                    setEditing(null);
+                    setMessage(`You're driving every week for ${s.title}.`);
+                    refresh();
+                  }}
+                />
+              </li>
+            );
+          }
+          return (
+            <li key={s.id} className={`weekly-drive${d ? ' is-on' : ''}`}>
+              <span className="weekly-drive__body">
+                <span className="weekly-drive__title">{s.title}</span>
+                <span className="weekly-drive__meta">
+                  {s.category === 'church' ? 'Church' : 'College Life'}, {WEEKDAYS[s.weekday]}s at {formatClock(s.startTime)}
+                </span>
+                {d && (
+                  <span className="weekly-drive__status">
+                    Every week: {d.seats} {d.seats === 1 ? 'seat' : 'seats'}, leave {d.departOffsetMinutes} min before
+                  </span>
+                )}
+              </span>
+              {d ? (
+                stopping === s.id ? (
+                  <span className="ride-card__confirm">
+                    <span>Stop driving every week?</span>
+                    <button className="btn btn--danger btn--small" onClick={() => void stop(d, s)}>
+                      Yes, stop
+                    </button>
+                    <button className="btn btn--ghost btn--small" onClick={() => setStopping(null)}>
+                      Keep
+                    </button>
+                  </span>
+                ) : (
+                  <span className="weekly-drive__actions">
+                    <button className="btn btn--ghost btn--small" onClick={() => setEditing(s.id)}>
+                      Edit
+                    </button>
+                    <button className="link-button link-button--danger" onClick={() => setStopping(s.id)}>
+                      Stop
+                    </button>
+                  </span>
+                )
+              ) : (
+                <button className="btn btn--primary btn--small" onClick={() => setEditing(s.id)} disabled={editing !== null}>
+                  Drive every week
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {message && (
+        <p className="note note--ok" role="status">
+          {message}
+        </p>
+      )}
+      {error && <ErrorNote message={error} />}
+    </section>
+  );
+}
+
+function WeeklyDriveForm(props: {
+  series: RideSeries;
+  initial: WeeklyDrive | null;
+  profile: DriverProfile;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const { series, initial, profile, onSaved, onCancel } = props;
+  const [seats, setSeats] = useState(String(initial?.seats ?? profile.seats));
+  const [offset, setOffset] = useState(initial?.departOffsetMinutes ?? 30);
+  const [link, setLink] = useState(initial?.gcJoinLink ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fid = series.id;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const n = Number(seats);
+    if (!Number.isInteger(n) || n < 1 || n > 12) return setError('Seats must be between 1 and 12.');
+    if (link.trim() && !isMessengerLink(link)) return setError('Paste a Messenger group link (starts with https://m.me/).');
+    setError(null);
+    setBusy(true);
+    try {
+      await api.saveWeeklyDrive({ seriesId: series.id, seats: n, departOffsetMinutes: offset, gcJoinLink: link.trim() || null });
+      onSaved();
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="weekly-drive-form" onSubmit={submit} noValidate>
+      <p className="weekly-drive__title">
+        {series.title}, every {WEEKDAYS[series.weekday]} at {formatClock(series.startTime)}
+      </p>
+      <div className="form__split">
+        <Field id={`wd-seats-${fid}`} label="Open seats">
+          <input id={`wd-seats-${fid}`} type="number" inputMode="numeric" min={1} max={12} value={seats} onChange={(e) => setSeats(e.target.value)} />
+        </Field>
+        <Field id={`wd-leave-${fid}`} label="Leave SDSU">
+          <select id={`wd-leave-${fid}`} value={offset} onChange={(e) => setOffset(Number(e.target.value))}>
+            {LEAVE_OPTIONS.map((m) => (
+              <option key={m} value={m}>
+                {m} min before
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <Field
+        id={`wd-link-${fid}`}
+        label="Messenger group chat link (optional)"
+        hint="Used every week. You can keep one group chat for your regular riders."
+      >
+        <input
+          id={`wd-link-${fid}`}
+          type="url"
+          inputMode="url"
+          autoCapitalize="none"
+          placeholder="https://m.me/j/..."
+          value={link}
+          onChange={(e) => setLink(e.target.value)}
+        />
+      </Field>
+      {error && <ErrorNote message={error} />}
+      <div className="form__row">
+        <button className="btn btn--primary" disabled={busy}>
+          {busy ? 'Saving…' : initial ? 'Save changes' : 'Drive every week'}
+        </button>
+        <button type="button" className="btn btn--ghost" onClick={onCancel} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }

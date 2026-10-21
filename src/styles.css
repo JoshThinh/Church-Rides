@@ -814,6 +814,44 @@ button.segmented__option { background: var(--paper); font: inherit; font-weight:
 .offer-card__gc { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .offer-card__foot { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
 
+/* ---------- Driver: weekly drives ---------- */
+.weekly-drives { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.weekly-drive {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.weekly-drive.is-on { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 14%, var(--paper)); }
+.weekly-drive__body { display: grid; gap: 2px; min-width: 0; flex: 1 1 180px; }
+.weekly-drive__title { font-weight: 700; }
+.weekly-drive__meta { color: var(--muted); font-size: 0.92rem; }
+.weekly-drive__status { font-size: 0.92rem; font-weight: 700; color: var(--gold-text); }
+.weekly-drive__actions { display: flex; align-items: center; gap: 14px; }
+.weekly-drive-form {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1.5px solid var(--gold);
+  border-radius: var(--radius-sm);
+}
+.tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--gold) 30%, var(--paper));
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
 /* ---------- Admin ---------- */
 .event-row--static { grid-template-columns: auto 1fr auto; }
 .spot-list { list-style: none; margin: 0; padding: 0; display: grid; }
@@ -833,6 +871,32 @@ button.segmented__option { background: var(--paper); font: inherit; font-weight:
 .day-group + .day-group { margin-top: 22px; }
 .day-group__label { font-size: 1.15rem; font-weight: 800; margin: 0 0 10px; }
 .day-group__label.is-soon { color: var(--gold-text); }
+
+/* ---------- Admin: driver approvals ---------- */
+.approvals { margin-bottom: 20px; }
+.approvals .section-heading { margin-top: 0; }
+.approvals__note { margin: -4px 0 12px; }
+.approvals__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.approval {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  padding: 12px 14px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.approval.is-pending { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 12%, var(--paper)); }
+.approval__body { display: grid; gap: 2px; min-width: 0; flex: 1 1 200px; }
+.approval__name { font-weight: 700; }
+.approval__meta { color: var(--muted); font-size: 0.92rem; overflow-wrap: anywhere; }
+
+.note--pending { margin-bottom: 18px; border: 1px solid var(--gold); background: color-mix(in srgb, var(--gold) 16%, var(--paper)); }
+.event-row__cta.is-closed { color: var(--muted); font-weight: 400; }
+.form__note { margin-top: -10px; }
+.prod-warning { background: var(--danger); color: #fff; padding: 10px var(--gutter); text-align: center; font-weight: 700; }
 
 /* ---------- Admin: weekly rides ---------- */
 .weekly { margin-bottom: 8px; }
@@ -912,7 +976,6 @@ button.segmented__option { background: var(--paper); font: inherit; font-weight:
   .ride-form-wrap { position: sticky; top: calc(var(--topbar) + 20px); }
 
   .drive-layout { grid-template-columns: minmax(0, 1fr) 380px; gap: 32px; align-items: start; }
-  .drive-layout aside { position: sticky; top: calc(var(--topbar) + 20px); }
 
   .admin-layout { grid-template-columns: minmax(0, 1fr) 420px; gap: 32px; align-items: start; }
 

@@ -1,10 +1,13 @@
 import type {
+  AdminDriver,
   Category,
   DriverOffer,
   DriverProfile,
   EventInput,
   RideSeries,
   SeriesInput,
+  WeeklyDrive,
+  WeeklyDriveInput,
   MyRide,
   NewOffer,
   PickupSpot,
@@ -47,11 +50,17 @@ export interface RidesApi {
 
   // Drivers
   getDriverProfile(): Promise<DriverProfile | null>;
-  saveDriverProfile(p: Omit<DriverProfile, 'id'>): Promise<void>;
+  saveDriverProfile(p: Omit<DriverProfile, 'id' | 'approved'>): Promise<void>;
   listMyOffers(): Promise<DriverOffer[]>;
   createOffer(o: NewOffer): Promise<void>;
   updateOfferLink(offerId: string, link: string | null): Promise<void>;
+  /** Removes one ride. For a weekly drive this skips just that week. */
   deleteOffer(offerId: string): Promise<void>;
+  /** "Drive every week": sign up once for a weekly ride. */
+  listMyWeeklyDrives(): Promise<WeeklyDrive[]>;
+  saveWeeklyDrive(input: WeeklyDriveInput): Promise<void>;
+  /** Stops a weekly drive. Returns how many upcoming dates were kept because riders already signed up. */
+  stopWeeklyDrive(id: string): Promise<number>;
 
   // Admin
   listAllEvents(): Promise<RideEvent[]>;
@@ -61,6 +70,9 @@ export interface RidesApi {
   /** Weekly rides (Church, CL). Saving one updates its upcoming dates. */
   listSeries(): Promise<RideSeries[]>;
   saveSeries(input: SeriesInput, id?: string): Promise<void>;
+  /** Driver approval: new drivers are hidden from riders until approved. */
+  adminListDrivers(): Promise<AdminDriver[]>;
+  setDriverApproved(driverId: string, approved: boolean): Promise<void>;
   /** Sets a new password for a driver who forgot theirs. */
   resetDriverPassword(email: string, newPassword: string): Promise<void>;
   addPickupSpot(name: string): Promise<void>;

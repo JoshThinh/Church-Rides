@@ -4,7 +4,7 @@ import { daysFromToday, formatDay, formatRange, formatTime, relativeDay } from '
 import { useNow } from '../lib/useNow';
 import { useAsync } from '../lib/useAsync';
 import type { Category, RideEvent } from '../types';
-import { CATEGORY_LABELS } from '../types';
+import { CATEGORY_LABELS, signupsClosed } from '../types';
 
 const SUBTITLES: Record<Category, string> = {
   church: 'Pick a Sunday to see who is driving.',
@@ -45,7 +45,9 @@ export function RideList({ category }: { category: Category }) {
                       </span>
                       {e.destination && <span className="event-row__meta">{e.destination}</span>}
                     </span>
-                    <span className="event-row__cta">Sign up</span>
+                    <span className={`event-row__cta${signupsClosed(e, now) ? ' is-closed' : ''}`}>
+                      {signupsClosed(e, now) ? 'Closed' : 'Sign up'}
+                    </span>
                   </a>
                 </li>
               ))}

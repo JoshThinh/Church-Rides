@@ -78,7 +78,7 @@ export function RideCard({ ride, showCancel, onCancelled }: { ride: MyRide; show
                 Leaves at {formatTime(driver.departTime)}
               </>
             ) : (
-              "Not matched yet. You'll get a driver as soon as someone offers seats."
+              "Waiting for a driver. You'll be put in a car automatically as soon as one opens up, so check back here."
             )}
           </dd>
         </div>
