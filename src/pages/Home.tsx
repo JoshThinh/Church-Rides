@@ -13,7 +13,7 @@ const BLURBS: Record<Category, string> = {
   event: 'Retreats, outings, and one-offs',
 };
 
-const CATEGORIES: Category[] = ['church', 'cl', 'event'];
+const CATEGORIES: Category[] = ['cl', 'church', 'event'];
 
 /** Simple line icons so the three choices are told apart by shape, not color. */
 const iconProps = { width: 26, height: 26, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true };
