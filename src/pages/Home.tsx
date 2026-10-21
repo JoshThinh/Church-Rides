@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { api } from '../api';
 import { daysFromToday, formatClock, formatDay, formatTime, formatToday, joinTimes, relativeDay } from '../lib/format';
 import { loadProfile, loadRideTokens } from '../lib/storage';
@@ -8,11 +9,39 @@ import { CATEGORY_LABELS, WEEKDAYS } from '../types';
 
 const BLURBS: Record<Category, string> = {
   church: 'Sunday services',
-  cl: 'Weekly CL',
+  cl: 'Weekly with the college group',
   event: 'Retreats, outings, and one-offs',
 };
 
 const CATEGORIES: Category[] = ['church', 'cl', 'event'];
+
+/** Simple line icons so the three choices are told apart by shape, not color. */
+const iconProps = { width: 26, height: 26, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true };
+const ICONS: Record<Category, ReactElement> = {
+  church: (
+    <svg {...iconProps}>
+      <path d="M12 2v4M10 4h4" />
+      <path d="M5 21V11l7-5 7 5v10" />
+      <path d="M10 21v-4a2 2 0 0 1 4 0v4" />
+      <path d="M3 21h18" />
+    </svg>
+  ),
+  cl: (
+    <svg {...iconProps}>
+      <circle cx="9" cy="8" r="3" />
+      <circle cx="17" cy="9" r="2.4" />
+      <path d="M3.5 19.5c0-3.2 2.5-5.5 5.5-5.5s5.5 2.3 5.5 5.5" />
+      <path d="M15 14.2c.6-.2 1.3-.3 2-.3 2.4 0 4 1.8 4 4.6" />
+    </svg>
+  ),
+  event: (
+    <svg {...iconProps}>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+      <path d="M3.5 10h17M8 3v4M16 3v4" />
+      <path d="m12 12.6.9 1.8 2 .3-1.45 1.4.35 2-1.8-.95-1.8.95.35-2-1.45-1.4 2-.3z" />
+    </svg>
+  ),
+};
 
 /** "Sundays 8:30 & 10:45 AM" for each weekly category, built from the admin's schedule. */
 function scheduleLines(series: RideSeries[]): { category: Category; text: string }[] {
@@ -22,7 +51,7 @@ function scheduleLines(series: RideSeries[]): { category: Category; text: string
     const days = [...new Set(items.map((s) => s.weekday))];
     for (const day of days) {
       const times = items.filter((s) => s.weekday === day).map((s) => formatClock(s.startTime));
-      const label = category === 'church' ? 'Church' : 'CL';
+      const label = category === 'church' ? 'Church' : 'College Life';
       out.push({ category, text: `${label}, ${WEEKDAYS[day]}s ${joinClock(times)}` });
     }
   }
@@ -113,6 +142,7 @@ export function Home() {
             return (
               <li key={c}>
                 <a className={`destination cat-${c}`} href={`#/rides/${c}`}>
+                  <span className="destination__icon">{ICONS[c]}</span>
                   <span className="destination__name">{CATEGORY_LABELS[c]}</span>
                   <span className="destination__blurb">{BLURBS[c]}</span>
                   {events.loading ? (

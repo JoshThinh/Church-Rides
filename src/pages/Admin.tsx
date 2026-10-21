@@ -195,7 +195,7 @@ function EventForm({ initial, onDone }: { initial: RideEvent | null; onDone: () 
           {(['church', 'cl', 'event'] as Category[]).map((c) => (
             <label key={c} className={`segmented__option cat-${c}${category === c ? ' is-checked' : ''}`}>
               <input type="radio" name="category" value={c} checked={category === c} onChange={() => setCategory(c)} />
-              {c === 'church' ? 'Church' : c === 'cl' ? 'CL' : 'Event'}
+              {c === 'church' ? 'Church' : c === 'cl' ? 'College Life' : 'Event'}
             </label>
           ))}
         </div>
@@ -494,7 +494,7 @@ function SeriesForm({ initial, onDone, onCancel }: { initial: RideSeries | null;
           {(['church', 'cl'] as WeeklyCategory[]).map((c) => (
             <label key={c} className={`segmented__option cat-${c}${form.category === c ? ' is-checked' : ''}`}>
               <input type="radio" name={`s-cat-${fid}`} value={c} checked={form.category === c} onChange={() => set('category', c)} />
-              {c === 'church' ? 'Church' : 'CL'}
+              {c === 'church' ? 'Church' : 'College Life'}
             </label>
           ))}
         </div>

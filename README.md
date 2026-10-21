@@ -58,6 +58,20 @@ One-time setup:
 
 Don't use "Deploy from a branch". That publishes the raw source files, which shows a blank white page.
 
+## Password reset emails (one-time setup)
+
+Drivers who forget their password tap **Forgot password?** and get an email link. Supabase's built-in email only sends 2 emails an hour and only to your Supabase team, so connect a real sender once:
+
+1. Use a Gmail account for the ride team (or your own). Turn on 2-Step Verification, then create an **App password** at myaccount.google.com → Security → App passwords.
+2. Supabase → **Authentication → Emails → SMTP Settings** → enable **Custom SMTP**:
+   - Sender email: the Gmail address. Sender name: `LBC Rides`
+   - Host: `smtp.gmail.com`. Port: `465`
+   - Username: the Gmail address. Password: the 16-character app password
+3. Supabase → **Authentication → URL Configuration**: Site URL `https://joshthinh.github.io/Church-Rides/`, and add `https://joshthinh.github.io/Church-Rides/**` to Redirect URLs.
+4. Optional: Authentication → Emails → **Reset Password** template, change the subject to "Reset your LBC Rides password".
+
+Admins can still reset a driver's password by hand on the admin page.
+
 ## Admin password
 
 Sign in at **☰ → Admin login**, then use **Change admin password** at the bottom of the admin page.

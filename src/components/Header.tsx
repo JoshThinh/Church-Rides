@@ -87,7 +87,7 @@ export function Header({ route }: { route: string[] }) {
           </button>
         </div>
         <ul className="menu__list">
-          {link('', 'Find a ride', 'Church, CL, and events')}
+          {link('', 'Find a ride', 'Church, College Life, and events')}
           {link('my-rides', 'My rides', 'Rides you signed up for on this device')}
           {link('drive', 'Drive / register my car', 'Offer seats and see your riders')}
           {link('admin', session?.role === 'admin' ? 'Admin' : 'Admin login', 'Add and edit events')}

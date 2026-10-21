@@ -138,6 +138,6 @@ export type Session =
 
 export const CATEGORY_LABELS: Record<Category, string> = {
   church: 'Church rides',
-  cl: 'CL rides',
+  cl: 'College Life rides',
   event: 'Events',
 };

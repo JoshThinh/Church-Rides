@@ -5,7 +5,7 @@ import { groupByStop } from '../lib/assign';
 import { formatDay, formatRange, formatTime, fromLocalInput, toLocalInput } from '../lib/format';
 import { errorMessage, useAsync } from '../lib/useAsync';
 import { driverProfileSchema, fieldErrors, formatPhone, isMessengerLink, offerSchema } from '../lib/validation';
-import { loadLastEmail, saveLastEmail, setKeepSignedIn } from '../lib/storage';
+import { clearPasswordReset, loadLastEmail, saveLastEmail, setKeepSignedIn } from '../lib/storage';
 import { useSession, useSessionReady } from '../session';
 import type { DriverOffer, DriverProfile, PickupSpot, RideEvent } from '../types';
 import { CATEGORY_LABELS } from '../types';
@@ -30,7 +30,7 @@ export function Drive() {
 }
 
 function DriverSignIn() {
-  const [mode, setMode] = useState<'signin' | 'signup'>(() => (loadLastEmail() ? 'signin' : 'signup'));
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>(() => (loadLastEmail() ? 'signin' : 'signup'));
   const [email, setEmail] = useState(loadLastEmail);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -51,12 +51,15 @@ function DriverSignIn() {
       if (signup) await api.signUpDriver(email, password);
       else await api.signInDriver(email, password);
       saveLastEmail(email.trim().toLowerCase());
+      clearPasswordReset();
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setBusy(false);
     }
   }
+
+  if (mode === 'forgot') return <ForgotPassword initialEmail={email} onBack={() => setMode('signin')} />;
 
   return (
     // method="post" + autocomplete hints let the phone's password manager offer to save the password.
@@ -92,6 +95,11 @@ function DriverSignIn() {
           onChange={(e) => setPassword(e.target.value)}
         />
       </Field>
+      {!signup && (
+        <button type="button" className="link-button forgot-link" onClick={() => setMode('forgot')}>
+          Forgot password?
+        </button>
+      )}
       {signup && (
         <Field id="driver-confirm" label="Type it again">
           <input id="driver-confirm" name="confirm-password" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
@@ -110,9 +118,71 @@ function DriverSignIn() {
       <p className="muted small">
         {signup
           ? 'Your phone may offer to save the password, so signing in later takes one tap.'
-          : 'Forgot your password? Ask a ride coordinator to reset it from the admin page.'}
+          : 'Signed in once on this phone? You stay signed in, so you rarely need your password.'}
       </p>
       {api.mode === 'demo' && <p className="muted small">Demo mode: accounts are saved only in this browser.</p>}
+    </form>
+  );
+}
+
+/** "Forgot password?": emails a link that brings the driver back here to set a new one. */
+function ForgotPassword({ initialEmail, onBack }: { initialEmail: string; onBack: () => void }) {
+  const [email, setEmail] = useState(initialEmail);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError('Enter the email you signed up with.');
+    setError(null);
+    setBusy(true);
+    try {
+      await api.requestPasswordReset(email);
+      setSent(true);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <div className="card form">
+        <h2 className="form__title">Check your email</h2>
+        <p>
+          If there's a driver account for <strong>{email.trim()}</strong>, we sent it a link to reset your password. It can take a minute,
+          and it might land in spam.
+        </p>
+        <p className="note">Open the link on this same phone, in this browser. You'll come back here to choose a new password.</p>
+        <div className="form__row">
+          <button type="button" className="btn btn--ghost" onClick={() => setSent(false)}>
+            Send it again
+          </button>
+          <button type="button" className="btn btn--ghost" onClick={onBack}>
+            Back to sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form className="card form" onSubmit={submit} noValidate>
+      <h2 className="form__title">Reset your password</h2>
+      <p className="muted">Enter the email you signed up with and we'll send you a link to choose a new password.</p>
+      <Field id="forgot-email" label="Email">
+        <input id="forgot-email" type="email" inputMode="email" autoComplete="username" autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </Field>
+      {error && <ErrorNote message={error} />}
+      <button className="btn btn--primary btn--block" disabled={busy}>
+        {busy ? 'Sending…' : 'Email me a reset link'}
+      </button>
+      <button type="button" className="link-button" onClick={onBack}>
+        Back to sign in
+      </button>
+      <p className="muted small">No email after a few minutes? A ride coordinator can also reset your password from the admin page.</p>
     </form>
   );
 }

@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import { needsNewPassword } from './lib/storage';
+import { NewPassword } from './pages/NewPassword';
 import { api } from './api';
 import { resetDemo } from './api/demo';
 import { Header } from './components/Header';
@@ -10,8 +12,8 @@ import { Home } from './pages/Home';
 import { MyRides } from './pages/MyRides';
 import { RideList } from './pages/RideList';
 import { RidePage } from './pages/RidePage';
-import { useRoute } from './router';
-import { SessionProvider } from './session';
+import { navigate, useRoute } from './router';
+import { SessionProvider, useSession } from './session';
 import type { Category } from './types';
 
 const CATEGORIES: Category[] = ['church', 'cl', 'event'];
@@ -33,9 +35,20 @@ function Page({ route }: { route: string[] }) {
       return <Admin />;
     case 'about':
       return <About />;
+    case 'new-password':
+      return <NewPassword />;
     default:
       return <NotFound />;
   }
+}
+
+/** After a driver opens a password-reset email link, send them to "Choose a new password". */
+function RecoveryWatcher({ route }: { route: string[] }) {
+  const session = useSession();
+  useEffect(() => {
+    if (session?.role === 'driver' && needsNewPassword() && route[0] !== 'new-password') navigate('/new-password');
+  }, [session, route]);
+  return null;
 }
 
 function NotFound() {
@@ -65,6 +78,7 @@ export default function App() {
       <button className="skip-link" onClick={() => document.getElementById('main')?.focus()}>
         Skip to content
       </button>
+      <RecoveryWatcher route={route} />
       <Header route={route} />
       {api.mode === 'demo' && (
         <div className="demo-banner" role="note">

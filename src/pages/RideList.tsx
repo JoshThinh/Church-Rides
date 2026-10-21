@@ -8,7 +8,7 @@ import { CATEGORY_LABELS } from '../types';
 
 const SUBTITLES: Record<Category, string> = {
   church: 'Pick a Sunday to see who is driving.',
-  cl: 'Pick a CL night to see who is driving.',
+  cl: 'Pick a College Life night to see who is driving.',
   event: 'Pick an event to see who is driving.',
 };
 

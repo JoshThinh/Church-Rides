@@ -18,9 +18,12 @@
   --line: #d8dbe7;         /* borders */
   --muted: #535b78;        /* secondary text */
   --route: #d9b45f;        /* the route line */
+  /* Church, College Life, and Events share one look; icons tell them apart. */
   --church: #1f2c80;       /* royal blue, like the church's mission text */
-  --cl: #6a3e8c;
-  --event: #82621a;        /* deep gold that reads on white */
+  --cl: #1f2c80;
+  --event: #1f2c80;
+  --gold-text: #7d5f16;    /* gold that reads on white */
+  --icon-bg: #0d1440;
   --danger: #b3261e;
   --ok: #1f6b3a;
   --focus: #2b6cff;
@@ -53,9 +56,11 @@
     --paper: #151c42;
     --line: #2a3263;
     --muted: #a7aecb;
-    --church: #9fb0ff;
-    --cl: #cfa8f0;
-    --event: #e9c46f;
+    --church: #b9c4ff;
+    --cl: #b9c4ff;
+    --event: #b9c4ff;
+    --gold-text: #e9c46f;
+    --icon-bg: #1f2752;
     --danger: #ff8a80;
     --ok: #7fd49b;
     --focus: #8fb2ff;
@@ -450,29 +455,44 @@ main {
 .next-ride__who { font-size: 0.95rem; }
 
 .destinations { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.destinations > li { display: grid; }
 .destination {
   position: relative;
   display: grid;
-  gap: 2px;
-  padding: 18px 52px 18px 20px;
+  grid-template-columns: auto 1fr;
+  column-gap: 16px;
+  row-gap: 2px;
+  align-items: start;
+  padding: 18px 48px 18px 18px;
   min-height: 96px;
   background: var(--paper);
   border: 1px solid var(--line);
-  border-left: 8px solid var(--cat);
   border-radius: var(--radius);
   text-decoration: none;
-  transition: border-color 150ms ease, transform 150ms ease;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
-.destination:hover { border-color: var(--cat); }
+.destination > :not(.destination__icon):not(.destination__arrow) { grid-column: 2; }
+.destination:hover { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.destination__icon {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--icon-bg);
+  color: var(--gold);
+}
 .destination:active { transform: scale(0.99); }
-.destination__name { font-family: var(--font-display); font-weight: 750; font-size: 1.45rem; color: var(--cat); }
+.destination__name { font-family: var(--font-display); font-weight: 800; font-size: 1.4rem; color: var(--ink); line-height: 1.15; }
 .destination__blurb { color: var(--muted); }
 .destination__next { margin-top: 8px; display: grid; gap: 0; font-weight: 700; font-size: 0.95rem; }
 .destination__when { font-size: 0.95rem; color: var(--muted); }
-.destination__when.is-soon { color: var(--event); }
+.destination__when.is-soon { color: var(--gold-text); }
 .destination__times { font-family: var(--font-display); font-weight: 800; font-size: 1.3rem; color: var(--ink); }
 .destination__more { font-weight: 400; color: var(--muted); font-size: 0.88rem; }
-.destination__arrow { position: absolute; right: 16px; top: 50%; translate: 0 -50%; color: var(--cat); }
+.destination__arrow { position: absolute; right: 16px; top: 50%; translate: 0 -50%; color: var(--muted); }
 
 .drive-prompt {
   display: block;
@@ -689,6 +709,7 @@ button.segmented__option { background: var(--paper); font: inherit; font-weight:
   cursor: pointer;
 }
 .link-button--danger { color: var(--danger); }
+.forgot-link { justify-self: start; margin-top: -8px; font-size: 0.95rem; }
 
 .chip {
   display: inline-flex;
@@ -811,7 +832,7 @@ button.segmented__option { background: var(--paper); font: inherit; font-weight:
 /* ---------- Day groups (ride lists) ---------- */
 .day-group + .day-group { margin-top: 22px; }
 .day-group__label { font-size: 1.15rem; font-weight: 800; margin: 0 0 10px; }
-.day-group__label.is-soon { color: var(--cat); }
+.day-group__label.is-soon { color: var(--gold-text); }
 
 /* ---------- Admin: weekly rides ---------- */
 .weekly { margin-bottom: 8px; }
@@ -857,12 +878,14 @@ button.segmented__option { background: var(--paper); font: inherit; font-weight:
 
   .destinations { grid-template-columns: repeat(3, 1fr); }
   .destination {
-    min-height: 180px;
+    grid-template-columns: 1fr;
+    min-height: 200px;
     align-content: start;
-    border-left-width: 1px;
-    border-top: 8px solid var(--cat);
+    border-top: 4px solid var(--gold);
     padding: 20px 20px 52px;
   }
+  .destination > :not(.destination__icon):not(.destination__arrow) { grid-column: 1; }
+  .destination__icon { grid-row: auto; margin-bottom: 12px; }
   .destination__arrow { top: auto; bottom: 18px; right: 18px; translate: none; }
   .destination__next { margin-top: auto; padding-top: 14px; }
 

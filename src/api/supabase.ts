@@ -5,6 +5,7 @@
 
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
 import type { DriverOffer, EventInput, PickupSpot, PublicOffer, RideEvent, RideSeries, SeriesInput, Session } from '../types';
+import { markNeedsNewPassword, markResetRequested } from '../lib/storage';
 import type { RidesApi } from './types';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string;
@@ -17,6 +18,12 @@ const adminDomain = (import.meta.env.VITE_ADMIN_EMAIL_DOMAIN as string | undefin
 const supabase = (url && anonKey
   ? createClient(url, anonKey, { auth: { flowType: 'pkce' } })
   : null) as unknown as SupabaseClient;
+
+// When a driver opens a password-reset email link, Supabase signs them in and
+// fires PASSWORD_RECOVERY. We note it so the site asks for a new password.
+supabase?.auth.onAuthStateChange((event) => {
+  if (event === 'PASSWORD_RECOVERY') markNeedsNewPassword();
+});
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Row = Record<string, any>;
@@ -200,6 +207,19 @@ export const supabaseApi: RidesApi = {
     }
     if (!data.session) {
       throw new Error('Your account was made, but email confirmation is still turned on in Supabase. Ask a ride coordinator to turn it off.');
+    }
+  },
+
+  async requestPasswordReset(email) {
+    markResetRequested();
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}${window.location.pathname}`,
+    });
+    if (error) {
+      const m = error.message.toLowerCase();
+      if (m.includes('rate limit')) throw new Error('Too many reset emails were sent recently. Try again in an hour, or ask a ride coordinator to reset your password.');
+      if (m.includes('not authorized')) throw new Error("The site can't send emails yet. Ask a ride coordinator to reset your password from the admin page.");
+      throw new Error(error.message);
     }
   },
 

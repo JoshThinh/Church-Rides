@@ -38,6 +38,8 @@ export interface RidesApi {
   /** Drivers use an email + password. */
   signInDriver(email: string, password: string): Promise<void>;
   signUpDriver(email: string, password: string): Promise<void>;
+  /** Emails a link that lets a driver set a new password. */
+  requestPasswordReset(email: string): Promise<void>;
   signInAdmin(username: string, password: string): Promise<void>;
   signOut(): Promise<void>;
   /** Changes the password of whoever is signed in (used for the shared admin login). */

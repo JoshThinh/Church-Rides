@@ -7,7 +7,7 @@ export function About() {
 
       <h2>Riders</h2>
       <ol>
-        <li>Pick Church rides, CL rides, or Events, then choose a date.</li>
+        <li>Pick Church rides, College Life rides, or Events, then choose a date.</li>
         <li>Enter your name and phone, and choose your pickup spot at SDSU.</li>
         <li>Pick a driver, or choose "Any driver" and we'll put you in a car that's already stopping near you.</li>
         <li>Tap "Join group chat" to get into your driver's Messenger group.</li>

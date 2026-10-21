@@ -94,3 +94,34 @@ export function shouldEndOldSession(): boolean {
 const LAST_EMAIL_KEY = 'lbc-rides:driver-email';
 export const loadLastEmail = (): string => read<string>(LAST_EMAIL_KEY, '');
 export const saveLastEmail = (email: string): void => write(LAST_EMAIL_KEY, email);
+
+// Password reset by email
+// A driver asks for a reset link, opens it on the same phone, and lands back on
+// the site signed in. These flags make the site show "Set a new password" then.
+const RESET_REQUESTED_KEY = 'lbc-rides:reset-requested';
+const NEEDS_NEW_PASSWORD_KEY = 'lbc-rides:needs-new-password';
+// Remember, at page load, whether we arrived from an email link (?code=...).
+const cameFromEmailLink = typeof window !== 'undefined' && /[?&]code=/.test(window.location.search);
+
+export function markResetRequested(): void {
+  write(RESET_REQUESTED_KEY, Date.now());
+}
+
+export function markNeedsNewPassword(): void {
+  write(NEEDS_NEW_PASSWORD_KEY, true);
+}
+
+export function needsNewPassword(): boolean {
+  if (read<boolean>(NEEDS_NEW_PASSWORD_KEY, false)) return true;
+  const requestedAt = read<number>(RESET_REQUESTED_KEY, 0);
+  return cameFromEmailLink && Date.now() - requestedAt < 24 * 60 * 60 * 1000;
+}
+
+export function clearPasswordReset(): void {
+  try {
+    localStorage.removeItem(RESET_REQUESTED_KEY);
+    localStorage.removeItem(NEEDS_NEW_PASSWORD_KEY);
+  } catch {
+    /* ignore */
+  }
+}

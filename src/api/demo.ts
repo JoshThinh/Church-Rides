@@ -309,6 +309,11 @@ export const demoApi: RidesApi = {
     emit(session);
   },
 
+  async requestPasswordReset() {
+    // Demo mode can't send email; pretend it worked so the screen can be tried out.
+    await wait();
+  },
+
   async signInAdmin(username, password) {
     await wait();
     if (username.trim().toLowerCase() !== DEMO_ADMIN.username || password !== DEMO_ADMIN.password) {
@@ -328,8 +333,12 @@ export const demoApi: RidesApi = {
     emit(null);
   },
 
-  async changePassword() {
-    throw new Error('Password changes only work when the site is connected to Supabase.');
+  async changePassword(newPassword) {
+    update((db) => {
+      const s = db.session;
+      if (!s || s.role !== 'driver') throw new Error('The admin password can only be changed when the site is connected to Supabase.');
+      db.passwords = { ...(db.passwords ?? {}), [s.email]: newPassword };
+    });
   },
 
   async getDriverProfile() {
