@@ -37,6 +37,8 @@ function DriverSignIn() {
   const [keep, setKeep] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmSentTo, setConfirmSentTo] = useState<string | null>(null);
+  const [resent, setResent] = useState(false);
   const signup = mode === 'signup';
 
   async function submit(e: FormEvent) {
@@ -48,9 +50,18 @@ function DriverSignIn() {
     setBusy(true);
     try {
       setKeepSignedIn(keep);
-      if (signup) await api.signUpDriver(email, password);
-      else await api.signInDriver(email, password);
       saveLastEmail(email.trim().toLowerCase());
+      if (signup) {
+        const { needsConfirmation } = await api.signUpDriver(email, password);
+        if (needsConfirmation) {
+          setConfirmSentTo(email.trim());
+          setMode('signin');
+          setPassword('');
+          setConfirm('');
+        }
+      } else {
+        await api.signInDriver(email, password);
+      }
       clearPasswordReset();
     } catch (err) {
       setError(errorMessage(err));
@@ -60,6 +71,45 @@ function DriverSignIn() {
   }
 
   if (mode === 'forgot') return <ForgotPassword initialEmail={email} onBack={() => setMode('signin')} />;
+
+  if (confirmSentTo) {
+    return (
+      <div className="card form">
+        <h2 className="form__title">Confirm your email</h2>
+        <p>
+          We sent a link to <strong>{confirmSentTo}</strong>. Tap it to finish making your driver account. It can take a minute, and it
+          might land in spam.
+        </p>
+        <p className="note">After you tap the link, come back here and sign in with your email and password.</p>
+        {resent && (
+          <p className="note note--ok" role="status">
+            Sent again.
+          </p>
+        )}
+        {error && <ErrorNote message={error} />}
+        <div className="form__row">
+          <button type="button" className="btn btn--primary" onClick={() => setConfirmSentTo(null)}>
+            I confirmed, sign in
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={async () => {
+              setError(null);
+              try {
+                await api.resendConfirmation(confirmSentTo);
+                setResent(true);
+              } catch (err) {
+                setError(errorMessage(err));
+              }
+            }}
+          >
+            Send the link again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     // method="post" + autocomplete hints let the phone's password manager offer to save the password.

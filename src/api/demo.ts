@@ -354,6 +354,11 @@ export const demoApi: RidesApi = {
       d.session = session;
     });
     emit(session);
+    return { needsConfirmation: false };
+  },
+
+  async resendConfirmation() {
+    await wait();
   },
 
   async requestPasswordReset() {

@@ -40,7 +40,10 @@ export interface RidesApi {
   onSessionChange(cb: (s: Session) => void): () => void;
   /** Drivers use an email + password. */
   signInDriver(email: string, password: string): Promise<void>;
-  signUpDriver(email: string, password: string): Promise<void>;
+  /** Creates a driver account. needsConfirmation = they must click the link in their email first. */
+  signUpDriver(email: string, password: string): Promise<{ needsConfirmation: boolean }>;
+  /** Sends the "confirm your email" link again. */
+  resendConfirmation(email: string): Promise<void>;
   /** Emails a link that lets a driver set a new password. */
   requestPasswordReset(email: string): Promise<void>;
   signInAdmin(username: string, password: string): Promise<void>;

@@ -95,7 +95,7 @@ function friendlyAuthError(message: string): string {
   const m = message.toLowerCase();
   if (m.includes('invalid login')) return 'Wrong email or password.';
   if (m.includes('already registered')) return 'An account with this email already exists. Sign in instead.';
-  if (m.includes('email not confirmed')) return 'This account isn\'t confirmed yet. Ask a ride coordinator to reset your password.';
+  if (m.includes('email not confirmed')) return 'Confirm your email first. Open the link we emailed you (check spam too), then sign in.';
   if (m.includes('password should be')) return 'Use a longer password (at least 8 characters).';
   if (m.includes('rate limit')) return 'Too many tries. Wait a few minutes and try again.';
   return message;
@@ -199,15 +199,27 @@ export const supabaseApi: RidesApi = {
   },
 
   async signUpDriver(email, password) {
-    const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` },
+    });
     if (error) throw new Error(friendlyAuthError(error.message));
     // Supabase returns a user that has no identities when the email is already taken.
     if (data.user && data.user.identities?.length === 0) {
       throw new Error('An account with this email already exists. Sign in instead.');
     }
-    if (!data.session) {
-      throw new Error('Your account was made, but email confirmation is still turned on in Supabase. Ask a ride coordinator to turn it off.');
-    }
+    // No session means Supabase sent a "confirm your email" link first.
+    return { needsConfirmation: !data.session };
+  },
+
+  async resendConfirmation(email) {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.trim(),
+      options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` },
+    });
+    if (error) throw new Error(friendlyAuthError(error.message));
   },
 
   async requestPasswordReset(email) {
